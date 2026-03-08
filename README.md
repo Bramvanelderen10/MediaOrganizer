@@ -1,281 +1,294 @@
-# Scheduled Job Application
+# MediaOrganizer
 
-A .NET 8 application that runs scheduled jobs every night at 5:00 AM and can be triggered on-demand via HTTP requests on your local network.
+A .NET 10 worker service that automatically organizes video files into a clean folder structure. Runs on a configurable cron schedule and can be triggered on-demand via HTTP. Companion subtitle files are moved alongside their videos and leftover directories are cleaned up automatically.
 
 ## Features
 
-- **Scheduled Execution**: Automatically runs job at 5:00 AM daily
-- **HTTP Trigger**: Trigger job manually via POST request on port 45263
-- **Media Organizer**: Sorts video files into Show/Season or Movie folders
-- **Move History Database**: Tracks every move in a local SQLite file
-- **Restore Endpoint**: Restore all tracked moves back to original paths
-- **Docker Support**: Ready to deploy on Ubuntu server
-- **Health Check**: Monitor application status
-- **Logging**: Comprehensive logging for debugging and monitoring
+- **Scheduled Execution** — runs on a configurable cron schedule (default: daily at 05:00)
+- **HTTP Trigger** — trigger organization or restore on-demand via REST API (port 45263)
+- **Smart Name Matching** — groups files by title similarity (Levenshtein distance) and detects `SxxExx`, anime-style, and movie naming patterns
+- **Separate Source & Destination** — reads from a source folder and writes the organized structure to a (optionally different) destination folder
+- **Subtitle Companion Moves** — automatically moves `.srt`, `.sub`, `.ass`, `.ssa`, `.vtt`, `.idx` files alongside their video
+- **Move History** — every move is tracked in a local SQLite database via EF Core
+- **Restore Endpoint** — reverts all tracked moves back to their original paths
+- **Directory Cleanup** — removes directory trees that no longer contain any media files after organization
+- **Duplicate Handling** — appends numeric suffixes (`(1)`, `(2)`, …) when destination files already exist
+- **Interactive API Docs** — OpenAPI spec + Scalar UI at `/scalar/v1`
+- **Docker Ready** — pre-built container image published to GitHub Container Registry
 
 ## Prerequisites
 
-### On Your Ubuntu Server:
-- Docker and Docker Compose installed
-- Port 45263 accessible on your local network
+### Docker Deployment
+- Docker and Docker Compose
+- Port 45263 accessible on your network
 
-### For Local Development:
-- .NET 8 SDK
-- Docker (optional)
+### Local Development
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
 
-## Quick Start on Ubuntu Server
+## Quick Start
 
-### 1. Install Docker (if not already installed)
-```bash
-# Update package index
-sudo apt update
+### 1. Create a `docker-compose.yml`
 
-# Install Docker
-sudo apt install -y docker.io docker-compose
+```yaml
+services:
+  media-organizer:
+    image: ghcr.io/bramvanelderen10/mediaorganizer:main
+    container_name: media-organizer
+    ports:
+      - "45263:45263"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - TZ=Europe/Amsterdam
+      - MediaOrganizer__SourceFolder=/media/source
+      - MediaOrganizer__DestinationFolder=/media/destination
+      - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
+    restart: unless-stopped
+    volumes:
+      - /path/to/your/videos/source:/media/source
+      - /path/to/your/videos/destination:/media/destination
+      - media-organizer-data:/data
 
-# Start Docker service
-sudo systemctl start docker
-sudo systemctl enable docker
-
-# Add your user to docker group (optional, to run without sudo)
-sudo usermod -aG docker $USER
+volumes:
+  media-organizer-data:
 ```
 
-### 2. Deploy the Application
-```bash
-# Clone or copy your project to the server
-cd /path/to/formattool
+### 2. Start the Container
 
-# Build and start the container
+```bash
 docker-compose up -d
-
-# Check if it's running
-docker-compose ps
 ```
 
-### 3. View Logs
-```bash
-# View real-time logs
-docker-compose logs -f
+### 3. Verify
 
-# View specific number of lines
-docker-compose logs --tail=100
+```bash
+curl http://localhost:45263/health
 ```
 
-## Usage
+## API Endpoints
 
-### Automatic Scheduled Execution
-The job runs automatically every day at 5:00 AM (server time). Check logs to confirm execution:
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | API overview with available endpoints |
+| `GET` | `/health` | Health check |
+| `POST` | `/trigger-job` | Trigger organization immediately |
+| `POST` | `/restore-folder-structure` | Restore all tracked moves |
+| `GET` | `/openapi/v1.json` | OpenAPI specification |
+| `GET` | `/scalar/v1` | Interactive API documentation |
+
+### Trigger Job
+
 ```bash
-docker-compose logs | grep "Job execution"
-```
-
-### Manual Trigger via HTTP
-From any device on your local network:
-
-```bash
-# Trigger the job
+# Use configured source folder
 curl -X POST http://YOUR_SERVER_IP:45263/trigger-job
 
-# Restore all tracked moves back to original structure
-curl -X POST http://YOUR_SERVER_IP:45263/restore-folder-structure
-
-# Trigger with an explicit folder override
+# Override source folder
 curl -X POST http://YOUR_SERVER_IP:45263/trigger-job \
   -H "Content-Type: application/json" \
   -d '{"folderPath":"/media/incoming"}'
-
-# Check health status
-curl http://YOUR_SERVER_IP:45263/health
-
-# View application info
-curl http://YOUR_SERVER_IP:45263/
 ```
 
-Replace `YOUR_SERVER_IP` with your Ubuntu server's IP address.
+**Example response:**
 
-### Example Response
 ```json
 {
   "message": "Job triggered successfully",
-  "executedAt": "2026-03-06T10:30:00",
-  "result": "Job completed successfully at 3/6/2026 10:30:00 AM"
+  "executedAt": "2026-03-08T10:30:00",
+  "result": "Processed 42 video files. Moved 38, skipped 4. Subtitles moved: 12. Leftover files removed: 3."
 }
 ```
+
+### Restore Moves
+
+```bash
+curl -X POST http://YOUR_SERVER_IP:45263/restore-folder-structure
+```
+
+## How Organization Works
+
+### 1. Discovery
+All video files under the source folder are discovered recursively, filtered by the configured extensions.
+
+### 2. Parsing & Grouping
+Each filename is cleaned (brackets, resolution tags, codec info, and release group names are stripped) and then classified:
+
+- **TV Episode** — detected by an `SxxExx` pattern (case-insensitive). The show title is extracted from the text before the token.
+- **Anime-style Episode** — detected by a trailing episode number or a `Title - Episode` pattern, optionally with a leading fansub tag in brackets (e.g. `[SubsPlease]`).
+- **Movie** — anything that doesn't match an episode pattern.
+
+Files with similar titles (≥ 80% Levenshtein similarity) are grouped together. If a group has multiple files or any `SxxExx` token, it is treated as a **Show**; otherwise it is a **Movie**.
+
+### 3. Destination Paths
+
+**TV/Anime shows:**
+```
+{destination}/{Show Title}/Season {season:00}/{filename}.ext
+```
+
+**Movies:**
+```
+{destination}/{Movie Title}/{Movie Title}.ext
+```
+
+### 4. Examples
+
+| Input | Output |
+|-------|--------|
+| `The.Office.S02E03.Health.Care.mkv` | `The Office/Season 02/Health Care S02E03.mkv` |
+| `[SubsPlease] Jujutsu Kaisen - 56 (1080p) [0F106B43].mkv` | `Jujutsu Kaisen/Season 01/Episode 56 S01E56.mkv` |
+| `Interstellar.2014.mp4` | `Interstellar 2014/Interstellar 2014.mp4` |
+
+### 5. Post-Move Cleanup
+- Companion subtitle files (`.srt`, `.sub`, `.ass`, `.ssa`, `.vtt`, `.idx`) in the same source directory are moved alongside their video.
+- Directory trees under the source that no longer contain any video or subtitle files are removed.
+- All moves are recorded in the SQLite history database so they can be reversed with the restore endpoint.
 
 ## Configuration
 
-### Media Organizer Settings
-Edit [appsettings.json](appsettings.json):
+All settings live under the `MediaOrganizer` section. They can be set in `appsettings.json` or via environment variables (using `__` as the separator).
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `SourceFolder` | — | Root folder to scan for unorganized videos (required) |
+| `DestinationFolder` | Same as `SourceFolder` | Root folder for the organized output |
+| `MoveHistoryDatabasePath` | `data/move-history.db` | Path to the SQLite database (absolute or relative to app base) |
+| `CronSchedule` | `0 5 * * *` | NCrontab cron expression for the background schedule |
+| `VideoExtensions` | `.mp4`, `.mkv`, `.avi`, `.mov`, `.wmv`, `.m4v`, `.webm`, `.ts`, `.mpg`, `.mpeg` | Video file extensions to include |
+| `SubtitleExtensions` | `.srt`, `.sub`, `.ass`, `.ssa`, `.vtt`, `.idx` | Subtitle file extensions to move alongside videos |
+
+### Example `appsettings.json`
 
 ```json
-"MediaOrganizer": {
-  "SourceFolder": "/path/to/your/media/folder",
-  "MoveHistoryDatabasePath": "data/move-history.db",
-  "VideoExtensions": [".mp4", ".mkv", ".avi", ".mov"]
+{
+  "MediaOrganizer": {
+    "SourceFolder": "/media/source",
+    "DestinationFolder": "/media/destination",
+    "MoveHistoryDatabasePath": "/data/move-history.db",
+    "CronSchedule": "0 5 * * *",
+    "VideoExtensions": [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg"],
+    "SubtitleExtensions": [".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"]
+  }
 }
 ```
 
-Notes:
-- `MoveHistoryDatabasePath` can be absolute or relative.
-- Relative paths are resolved from the app base directory.
-- The default is `data/move-history.db`.
+### Environment Variable Overrides (Docker)
 
-Organization rules:
-- TV episodes are detected by patterns like `S01E01` or `S01 E01`
-- Episode files are moved to: `Show Name/Season 01/Episode Name S01E01.ext`
-- Non-episode videos are treated as movies and moved to: `Movie Name/Movie Name.ext`
-
-### Change Schedule Time
-Edit [ScheduledJobService.cs](ScheduledJobService.cs#L17) and modify the cron expression:
-```csharp
-// Current: 0 5 * * * (5:00 AM daily)
-// Format: "minute hour day month dayofweek"
-_schedule = CrontabSchedule.Parse("0 5 * * *");
-```
-
-Examples:
-- `"0 3 * * *"` - 3:00 AM daily
-- `"0 */6 * * *"` - Every 6 hours
-- `"0 9 * * 1-5"` - 9:00 AM weekdays only
-
-### Change Timezone
-Edit [Dockerfile](Dockerfile#L15) or [docker-compose.yml](docker-compose.yml#L9):
 ```yaml
 environment:
-  - TZ=Europe/Amsterdam  # Change to your timezone
+  - MediaOrganizer__SourceFolder=/media/source
+  - MediaOrganizer__DestinationFolder=/media/destination
+  - MediaOrganizer__CronSchedule=0 3 * * *
+  - TZ=Europe/Amsterdam
 ```
 
-Common timezones:
-- `America/New_York`
-- `Europe/London`
-- `Asia/Tokyo`
-- `UTC`
+### Cron Schedule Examples
 
-### Change Port
-Edit [docker-compose.yml](docker-compose.yml#L6):
-```yaml
-ports:
-  - "45263:45263"  # Change first number for external port
-```
+| Expression | Description |
+|------------|-------------|
+| `0 5 * * *` | Daily at 05:00 |
+| `0 3 * * *` | Daily at 03:00 |
+| `0 */6 * * *` | Every 6 hours |
+| `0 9 * * 1-5` | Weekdays at 09:00 |
 
-## Customize Job Logic
-
-Core organization logic is in [JobExecutor.cs](JobExecutor.cs).
-
-## Management Commands
+## Docker Management
 
 ```bash
-# Start the application
+# Start
 docker-compose up -d
 
-# Stop the application
+# Stop
 docker-compose down
 
-# Restart the application
+# Restart
 docker-compose restart
 
 # View logs
 docker-compose logs -f
 
-# Rebuild after code changes
+# Rebuild from source
 docker-compose up -d --build
 
-# Check status
-docker-compose ps
-
-# Remove everything (including volumes)
+# Remove everything including volumes
 docker-compose down -v
-```
-
-## Firewall Configuration
-
-If you can't access port 45263, configure UFW:
-
-```bash
-# Allow port 45263 from local network
-sudo ufw allow from 192.168.1.0/24 to any port 45263
-
-# Or allow from specific IP
-sudo ufw allow from 192.168.1.100 to any port 45263
-
-# Check firewall status
-sudo ufw status
-```
-
-## Troubleshooting
-
-### Application not starting
-```bash
-# Check logs for errors
-docker-compose logs
-
-# Check if port is already in use
-sudo netstat -tulpn | grep 45263
-```
-
-### Can't access from network
-```bash
-# Verify container is running
-docker-compose ps
-
-# Check if port is exposed
-docker port scheduled-job-app
-
-# Test from server itself
-curl http://localhost:45263/health
-```
-
-### Job not running at scheduled time
-- Check server timezone: `date`
-- Check container timezone: `docker exec scheduled-job-app date`
-- Review logs for schedule confirmation
-
-### Update timezone in running container
-```bash
-# Stop container
-docker-compose down
-
-# Edit docker-compose.yml with correct TZ
-
-# Rebuild and start
-docker-compose up -d --build
 ```
 
 ## Development
 
-### Run Locally (without Docker)
+### Run Locally
+
 ```bash
-# Install .NET 8 SDK from https://dotnet.microsoft.com/download
+dotnet run --project src/MediaOrganizer/MediaOrganizer.csproj
+```
 
-# Restore dependencies
-dotnet restore
+The application starts on `http://localhost:45263`.
 
-# Run the application
-dotnet run
+### Run Tests
 
-# Application will start on http://localhost:45263
+```bash
+dotnet test
 ```
 
 ### Build Docker Image
+
 ```bash
-docker build -t scheduled-job-app .
+docker build -t media-organizer .
 ```
 
 ## Project Structure
 
 ```
-.
-├── Program.cs                    # Application entry point & API endpoints
-├── ScheduledJobService.cs        # Background service for scheduling
-├── JobExecutor.cs                # Job logic implementation
-├── ScheduledJobApp.csproj        # Project configuration
-├── Dockerfile                    # Docker configuration
-├── docker-compose.yml            # Docker Compose configuration
-├── appsettings.json              # Application settings
-└── README.md                     # This file
+src/MediaOrganizer/
+├── Program.cs                         # Entry point, Kestrel config & API endpoints
+├── Configuration/
+│   └── MediaOrganizerOptions.cs       # Strongly-typed settings
+├── Discovery/
+│   └── VideoFileFinder.cs             # Recursive video file scanner
+├── Parsing/
+│   ├── MediaGrouper.cs               # Title parsing, similarity grouping
+│   ├── MediaObject.cs                # Movie/Show model
+│   ├── Season.cs / Episode.cs        # Show hierarchy
+│   └── ParsedVideoFile.cs            # Intermediate parse result
+├── Planning/
+│   ├── MovePlanBuilder.cs            # Destination resolution & history-aware planning
+│   └── MovePlanItem.cs               # Plan entry
+├── Execution/
+│   ├── VideoMover.cs                 # File move execution with duplicate handling
+│   ├── SubtitleMover.cs              # Companion subtitle detection & move
+│   └── MovedFileInfo.cs              # Move result record
+├── History/
+│   ├── MoveHistoryStore.cs           # SQLite persistence via EF Core
+│   ├── MoveHistoryDbContext.cs       # DbContext
+│   └── MoveHistoryEntry.cs           # Database entity
+├── Cleanup/
+│   └── DirectoryCleaner.cs           # Post-move empty directory removal
+├── Orchestration/
+│   ├── ScheduledJobService.cs        # BackgroundService with cron scheduling
+│   ├── JobExecutor.cs                # Job entry point
+│   ├── MediaFileOrganizer.cs         # Full pipeline orchestrator
+│   └── MediaFileRestorer.cs          # Move reversal logic
+├── Helpers/
+│   ├── IFileSystem.cs                # File system abstraction for testing
+│   ├── PhysicalFileSystem.cs         # Real file system implementation
+│   └── PathHelpers.cs                # Unique path generation
+├── appsettings.json                  # Default configuration
+└── appsettings.Production.json       # Production overrides
+
+src/MediaOrganizer.Tests/             # Unit tests
 ```
 
-## License
+## Firewall
 
-This project is open source and available for personal and commercial use.
+If the service is not reachable, open port 45263:
+
+```bash
+sudo ufw allow from 192.168.1.0/24 to any port 45263
+```
+
+## Troubleshooting
+
+| Problem | What to check |
+|---------|---------------|
+| Container won't start | `docker-compose logs` for errors |
+| Port conflict | `sudo ss -tlnp \| grep 45263` |
+| Can't reach from network | `docker-compose ps` and firewall rules |
+| Job doesn't run on time | Compare `date` on host vs `docker exec media-organizer date`; verify `TZ` |
+| Files not being organized | Check that `SourceFolder` exists and contains files with configured extensions |
