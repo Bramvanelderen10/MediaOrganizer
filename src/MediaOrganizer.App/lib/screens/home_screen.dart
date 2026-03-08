@@ -23,6 +23,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isCheckingHealth = false;
   String? _apiUnavailableMessage;
 
+  StreamSubscription<String>? _logSubscription;
+  final List<String> _logLines = <String>[];
+  final ScrollController _logScrollController = ScrollController();
+  bool _isLogConnecting = false;
+  bool _isLogConnected = false;
+  String? _logError;
+  DateTime _nextLogConnectAttemptAt = DateTime.fromMillisecondsSinceEpoch(0);
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +43,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _stopHealthPolling();
+    _disconnectLogs(updateUi: false);
+    _logScrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -50,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
         _stopHealthPolling();
+        _disconnectLogs();
         break;
     }
   }
@@ -89,9 +100,209 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _apiUnavailableMessage = message;
         });
       }
+
+      // Auto-connect logs while the API is reachable.
+      if (reachable) {
+        unawaited(_maybeAutoConnectLogs());
+      } else {
+        _disconnectLogs();
+      }
     } finally {
       _isCheckingHealth = false;
     }
+  }
+
+  Future<void> _maybeAutoConnectLogs() async {
+    if (!_isApiHealthy) return;
+    if (_isLogConnected || _isLogConnecting) return;
+
+    final now = DateTime.now();
+    if (now.isBefore(_nextLogConnectAttemptAt)) return;
+
+    _nextLogConnectAttemptAt = now.add(const Duration(seconds: 5));
+    await _connectLogs();
+  }
+
+  Future<void> _connectLogs() async {
+    if (_isLogConnecting || _isLogConnected) return;
+    if (!_isApiHealthy) return;
+
+    setState(() {
+      _isLogConnecting = true;
+      _logError = null;
+    });
+
+    try {
+      final stream = _api.streamLogs(tail: 200);
+      _logSubscription = stream.listen(
+        (line) {
+          if (!mounted) return;
+          setState(() {
+            _isLogConnected = true;
+            _logLines.add(line);
+            // Keep memory bounded.
+            if (_logLines.length > 500) {
+              _logLines.removeRange(0, _logLines.length - 500);
+            }
+          });
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_logScrollController.hasClients) return;
+            final pos = _logScrollController.position;
+            _logScrollController.jumpTo(pos.maxScrollExtent);
+          });
+        },
+        onError: (Object e) {
+          if (!mounted) return;
+          setState(() {
+            _logError = e.toString();
+            _isLogConnected = false;
+          });
+        },
+        onDone: () {
+          if (!mounted) return;
+          setState(() {
+            _isLogConnected = false;
+          });
+        },
+        cancelOnError: false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _logError = e.toString();
+        _isLogConnected = false;
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLogConnecting = false;
+        });
+      }
+    }
+  }
+
+  void _disconnectLogs({bool updateUi = true}) {
+    _logSubscription?.cancel();
+    _logSubscription = null;
+
+    if (updateUi && mounted) {
+      setState(() {
+        _isLogConnecting = false;
+        _isLogConnected = false;
+      });
+      return;
+    }
+
+    _isLogConnecting = false;
+    _isLogConnected = false;
+  }
+
+  Widget _buildLogPanel(BuildContext context) {
+    final canToggle = _isApiHealthy && !_isLogConnecting;
+    final statusText = _isLogConnecting
+        ? 'Connecting…'
+        : _isLogConnected
+            ? 'Connected'
+            : 'Disconnected';
+
+    return Card(
+      elevation: 0,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Live logs',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  statusText,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: _isLogConnected
+                            ? Colors.green
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const Spacer(),
+                if (_isLogConnecting)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                IconButton(
+                  tooltip: _isLogConnected ? 'Disconnect logs' : 'Connect logs',
+                  onPressed: canToggle
+                      ? () {
+                          if (_isLogConnected) {
+                            _disconnectLogs();
+                          } else {
+                            unawaited(_connectLogs());
+                          }
+                        }
+                      : null,
+                  icon: Icon(
+                    _isLogConnected
+                        ? Icons.stop_circle_outlined
+                        : Icons.play_circle_outline,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 240,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.black,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: _logLines.isEmpty
+                  ? const Center(
+                      child: Text(
+                        'No logs yet…',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    )
+                  : Scrollbar(
+                      child: ListView.builder(
+                        controller: _logScrollController,
+                        itemCount: _logLines.length,
+                        itemBuilder: (ctx, i) => Text(
+                          _logLines[i],
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            height: 1.25,
+                          ),
+                        ),
+                      ),
+                    ),
+            ),
+            if (_logError != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _logError!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _triggerOrganize() async {
@@ -164,61 +375,70 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.video_library_rounded,
-                size: 80,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Connected to',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
-                ),
-              ),
-              Text(
-                widget.apiUrl,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 48),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: FilledButton.icon(
-                  onPressed: canOrganize ? _triggerOrganize : null,
-                  icon: _isLoading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.play_arrow_rounded),
-                  label: Text(
-                    _isLoading ? 'Organizing…' : 'Organize videos',
-                    style: const TextStyle(fontSize: 18),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(
+                    Icons.video_library_rounded,
+                    size: 80,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
-                ),
-              ),
-              if (!_isApiHealthy && !_isLoading) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _apiUnavailableMessage ?? 'API not available.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.error,
+                  const SizedBox(height: 24),
+                  Text(
+                    'Connected to',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey,
+                        ),
+                  ),
+                  Text(
+                    widget.apiUrl,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                  const SizedBox(height: 48),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: FilledButton.icon(
+                      onPressed: canOrganize ? _triggerOrganize : null,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.play_arrow_rounded),
+                      label: Text(
+                        _isLoading ? 'Organizing…' : 'Organize videos',
+                        style: const TextStyle(fontSize: 18),
                       ),
-                ),
-              ],
-            ],
+                    ),
+                  ),
+                  if (!_isApiHealthy && !_isLoading) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _apiUnavailableMessage ?? 'API not available.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  _buildLogPanel(context),
+                ],
+              ),
+            ),
           ),
         ),
       ),

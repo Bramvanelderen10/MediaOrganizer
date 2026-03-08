@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to build/release (e.g. v1.2.3). Leave blank to just build an APK artifact."
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -11,6 +17,7 @@ env:
 
 jobs:
   build-and-push:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
 
     permissions:
@@ -46,3 +53,107 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  flutter-android-apk:
+    name: Build Flutter Android APK
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    env:
+      APP_DIR: src/MediaOrganizer.App
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag || github.ref }}
+
+      - name: Resolve build/release version
+        id: vars
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "is_tag=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter dependencies
+        working-directory: ${{ env.APP_DIR }}
+        run: flutter pub get
+
+      - name: Decode Android keystore (release signing)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: ${{ env.APP_DIR }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android/app
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+
+      - name: Build Android APK (release)
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/${{ env.APP_DIR }}/android/app/upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release
+
+      - name: Collect APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          apk_src="${{ env.APP_DIR }}/build/app/outputs/flutter-apk/app-release.apk"
+          if [ ! -f "$apk_src" ]; then
+            echo "Expected APK not found at: $apk_src" >&2
+            find "${{ env.APP_DIR }}/build" -maxdepth 6 -type f -name "*.apk" -print || true
+            exit 1
+          fi
+
+          apk_name="MediaOrganizer-${{ steps.vars.outputs.tag }}-android.apk"
+          apk_out="${{ env.APP_DIR }}/build/$apk_name"
+          cp "$apk_src" "$apk_out"
+
+          echo "apk_name=$apk_name" >> "$GITHUB_OUTPUT"
+          echo "apk_path=$apk_out" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.apk_path }}
+          if-no-files-found: error
+
+      - name: Create GitHub Release and upload APK
+        if: steps.vars.outputs.is_tag == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ steps.apk.outputs.apk_path }}

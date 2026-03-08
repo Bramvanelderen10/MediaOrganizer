@@ -1,5 +1,7 @@
 import 'package:http/http.dart' as http;
 
+import 'sse_client.dart';
+
 /// Communicates with the MediaOrganizer API.
 class ApiService {
   final String baseUrl;
@@ -30,6 +32,12 @@ class ApiService {
     } catch (_) {
       return false;
     }
+  }
+
+  /// Streams live log lines from GET /logs/stream (Server-Sent Events).
+  Stream<String> streamLogs({int tail = 200}) {
+    final clampedTail = tail.clamp(0, 1000);
+    return SseClient.connect(_uri('/logs/stream?tail=$clampedTail'));
   }
 }
 

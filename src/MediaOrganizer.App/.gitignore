@@ -33,7 +33,6 @@ migrate_working_dir/
 pubspec.lock
 
 # Platform directories
-/android/
 /ios/
 /linux/
 /macos/
