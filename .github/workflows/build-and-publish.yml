@@ -70,7 +70,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ inputs.release_tag || github.ref }}
 
       - name: Resolve build/release version
         id: vars
@@ -78,16 +77,41 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -n "${{ inputs.release_tag }}" ]; then
-            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          # workflow_dispatch input is not always available as an expressions context.
+          # Read it directly from the event payload instead.
+          release_tag=""
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            release_tag="$(jq -r '.inputs.release_tag // empty' "${GITHUB_EVENT_PATH}")"
+          fi
+
+          if [ -n "${release_tag}" ]; then
+            echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+            echo "tag=${release_tag}" >> "$GITHUB_OUTPUT"
             echo "is_tag=true" >> "$GITHUB_OUTPUT"
-          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            exit 0
+          fi
+
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
             echo "is_tag=true" >> "$GITHUB_OUTPUT"
           else
             echo "tag=dev-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
             echo "is_tag=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Checkout requested tag (manual runs)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_tag="${{ steps.vars.outputs.release_tag }}"
+          if [ -z "${release_tag}" ]; then
+            echo "No release_tag provided; building selected branch commit."
+            exit 0
+          fi
+
+          git fetch --force --tags
+          git checkout "${release_tag}"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -106,13 +130,20 @@ jobs:
         run: flutter pub get
 
       - name: Decode Android keystore (release signing)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         working-directory: ${{ env.APP_DIR }}
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
+
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret configured; using debug signing."
+            exit 0
+          fi
+
           mkdir -p android/app
-          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/app/upload-keystore.jks
 
       - name: Build Android APK (release)
         working-directory: ${{ env.APP_DIR }}

@@ -5,3 +5,8 @@ obj/
 .vs/
 logs/
 *.log
+
+# Android signing artifacts (never commit)
+upload-keystore.*
+*.jks
+*.keystore
