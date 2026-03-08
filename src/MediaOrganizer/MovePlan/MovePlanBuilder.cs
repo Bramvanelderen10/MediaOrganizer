@@ -15,16 +15,13 @@ public class MovePlanBuilder
 {
     private readonly ILogger<MovePlanBuilder> _logger;
     private readonly IDbContextFactory<MoveHistoryDbContext> _contextFactory;
-    private readonly MediaFileKeyGenerator _keyGenerator;
 
     public MovePlanBuilder(
         ILogger<MovePlanBuilder> logger,
-        IDbContextFactory<MoveHistoryDbContext> contextFactory,
-        MediaFileKeyGenerator keyGenerator)
+        IDbContextFactory<MoveHistoryDbContext> contextFactory)
     {
         _logger = logger;
         _contextFactory = contextFactory;
-        _keyGenerator = keyGenerator;
     }
 
     /// <summary>
@@ -45,9 +42,10 @@ public class MovePlanBuilder
         {
             var filesToMove = GetFilesForMediaObject(media);
 
-            foreach (var filePath in filesToMove)
+            foreach (var filePair in filesToMove)
             {
-                var uniqueKey = _keyGenerator.GenerateKey(filePath);
+                var filePath = filePair.FilePath;
+                var uniqueKey = filePair.UniqueKey;
                 var destinationPath = ResolveDestinationPath(filePath, media, rootFolder);
 
                 // Get latest move history record for this unique key
@@ -120,24 +118,27 @@ public class MovePlanBuilder
     /// <summary>
     /// Gets all file paths for a given media object (handles both movies and shows).
     /// </summary>
-    private static List<string> GetFilesForMediaObject(MediaObject media)
+    private static List<FileKeyPair> GetFilesForMediaObject(MediaObject media)
     {
-        var files = new List<string>();
+        var files = new List<FileKeyPair>();
 
         if (media.Type == MediaType.Movie && media.MoviePath != null)
         {
-            files.Add(media.MoviePath);
+            files.Add(new FileKeyPair(media.MoviePath, media.Name));
         }
         else if (media.Type == MediaType.Show)
         {
             foreach (var season in media.Seasons)
             {
-                files.AddRange(season.EpisodePaths);
+                var seasonKey = $"{media.Name}_Season{season.SeasonNumber:00}";
+                files.AddRange(season.Episodes.Select(e => new FileKeyPair(e.Path, $"{seasonKey}_Episode{e.EpisodeNumber:00}")));
             }
         }
 
         return files;
     }
+
+    private record FileKeyPair(string FilePath, string UniqueKey);
 
     /// <summary>
     /// Resolves the destination path for a file based on the media object and root folder.
@@ -158,7 +159,7 @@ public class MovePlanBuilder
         // Find which season this episode belongs to
         foreach (var season in media.Seasons)
         {
-            if (season.EpisodePaths.Contains(filePath))
+            if (season.Episodes.Any(e => e.Path == filePath))
             {
                 var seasonFolder = Path.Combine(rootFolder, media.Name, $"Season {season.SeasonNumber:00}");
                 var fileName = Path.GetFileNameWithoutExtension(filePath);

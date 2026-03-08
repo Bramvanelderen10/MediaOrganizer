@@ -1,7 +1,7 @@
 namespace MediaOrganizer;
 
-public class Season(int seasonNumber, List<string> episodePaths)
+public class Season(int seasonNumber, List<Episode> episodes)
 {
     public int SeasonNumber { get; } = seasonNumber;
-    public List<string> EpisodePaths { get; } = episodePaths;
+    public List<Episode> Episodes { get; } = episodes;
 }

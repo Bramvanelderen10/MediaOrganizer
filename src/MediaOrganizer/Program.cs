@@ -18,7 +18,6 @@ builder.Services.AddSingleton<JobExecutor>();
 builder.Services.Configure<MediaOrganizerOptions>(builder.Configuration.GetSection("MediaOrganizer"));
 builder.Services.AddSingleton<VideoFileFinder>();
 builder.Services.AddSingleton<MediaGrouper>();
-builder.Services.AddSingleton<MediaFileKeyGenerator>();
 builder.Services.AddSingleton<MovePlanBuilder>();
 
 var dbPath = MoveHistoryStore.ResolveDatabasePath(

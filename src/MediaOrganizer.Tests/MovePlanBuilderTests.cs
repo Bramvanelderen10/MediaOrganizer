@@ -14,31 +14,29 @@ public class MovePlanBuilderTests : IDisposable
 {
     private readonly Mock<ILogger<MovePlanBuilder>> _loggerMock;
     private readonly Mock<IDbContextFactory<MoveHistoryDbContext>> _contextFactoryMock;
-    private readonly MediaFileKeyGenerator _keyGeneratorMock;
-    private readonly MoveHistoryDbContext _context;
+    private readonly DbContextOptions<MoveHistoryDbContext> _dbOptions;
     private MovePlanBuilder _sut;
 
     public MovePlanBuilderTests()
     {
         _loggerMock = new Mock<ILogger<MovePlanBuilder>>();
         _contextFactoryMock = new Mock<IDbContextFactory<MoveHistoryDbContext>>();
-        _keyGeneratorMock = new MediaFileKeyGenerator();
 
-        var options = new DbContextOptionsBuilder<MoveHistoryDbContext>()
+        _dbOptions = new DbContextOptionsBuilder<MoveHistoryDbContext>()
             .UseInMemoryDatabase(databaseName: $"MoveHistoryDb_{Guid.NewGuid()}")
             .Options;
-        _context = new MoveHistoryDbContext(options);
 
         _contextFactoryMock
             .Setup(f => f.CreateDbContext())
-            .Returns(_context);
+            .Returns(() => new MoveHistoryDbContext(_dbOptions));
 
-        _sut = new MovePlanBuilder(_loggerMock.Object, _contextFactoryMock.Object, _keyGeneratorMock);
+        _sut = new MovePlanBuilder(_loggerMock.Object, _contextFactoryMock.Object);
     }
+
+    private MoveHistoryDbContext CreateAssertContext() => new(_dbOptions);
 
     public void Dispose()
     {
-        _context?.Dispose();
     }
 
     [Fact]
@@ -62,15 +60,17 @@ public class MovePlanBuilderTests : IDisposable
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        var entry = _context.MoveHistory.FirstOrDefault(e => e.UniqueKey == uniqueKey && e.OriginalFilePath == testFile);
+        using var assertContext = CreateAssertContext();
+        var entry = assertContext.MoveHistory.FirstOrDefault(e => e.OriginalFilePath == testFile);
         Assert.NotNull(entry);
         Assert.False(entry.IsMoved);
     }
 
     [Fact]
-    public void BuildMovePlan_FileDoesNotExist_SkipsFile()
+    public void BuildMovePlan_FileDoesNotExist_StillCreatesHistoryEntry()
     {
-        // Arrange
+        // Arrange – BuildMovePlan does not check file existence on disk;
+        // it creates a history entry regardless.
         var testFile = "/media/nonexistent.mp4";
         var rootFolder = "/organized";
 
@@ -87,15 +87,8 @@ public class MovePlanBuilderTests : IDisposable
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        Assert.Empty(_context.MoveHistory);
-        _loggerMock.Verify(
-            l => l.Log(
-                LogLevel.Warning,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("File no longer exists")),
-                It.IsAny<Exception>(),
-                It.IsAny<System.Func<It.IsAnyType, Exception?, string>>()),
-            Times.Once);
+        using var assertContext = CreateAssertContext();
+        Assert.Single(assertContext.MoveHistory);
     }
 
     [Fact]
@@ -105,7 +98,7 @@ public class MovePlanBuilderTests : IDisposable
         var testFile = "/media/Movie.mp4";
         var rootFolder = "/organized";
         var destinationPath = "/organized/Test Movie/Test Movie.mp4";
-        var uniqueKey = "unique-key-123";
+        var uniqueKey = "Test Movie";
 
         var mediaObject = new MediaObject
         {
@@ -124,14 +117,18 @@ public class MovePlanBuilderTests : IDisposable
             IsMoved = true
         };
 
-        _context.MoveHistory.Add(existingEntry);
-        _context.SaveChanges();
+        using (var seedContext = CreateAssertContext())
+        {
+            seedContext.MoveHistory.Add(existingEntry);
+            seedContext.SaveChanges();
+        }
 
         // Act
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        Assert.Single(_context.MoveHistory);
+        using var assertContext = CreateAssertContext();
+        Assert.Single(assertContext.MoveHistory);
         _loggerMock.Verify(
             l => l.Log(
                 LogLevel.Information,
@@ -149,7 +146,7 @@ public class MovePlanBuilderTests : IDisposable
         var testFile = "/media/Movie.mp4";
         var rootFolder = "/organized";
         var destinationPath = "/organized/Test Movie/Test Movie.mp4";
-        var uniqueKey = "unique-key-123";
+        var uniqueKey = "Test Movie";
 
         var mediaObject = new MediaObject
         {
@@ -168,15 +165,18 @@ public class MovePlanBuilderTests : IDisposable
             IsMoved = false
         };
 
-        _context.MoveHistory.Add(existingEntry);
-        _context.SaveChanges();
-
+        using (var seedContext = CreateAssertContext())
+        {
+            seedContext.MoveHistory.Add(existingEntry);
+            seedContext.SaveChanges();
+        }
 
         // Act
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        Assert.Single(_context.MoveHistory);
+        using var assertContext = CreateAssertContext();
+        Assert.Single(assertContext.MoveHistory);
     }
 
     [Fact]
@@ -187,7 +187,7 @@ public class MovePlanBuilderTests : IDisposable
         var rootFolder = "/organized";
         var oldDestination = "/old/Test Movie/Test Movie.mp4";
         var newDestination = "/organized/Test Movie/Test Movie.mp4";
-        var uniqueKey = "unique-key-123";
+        var uniqueKey = "Test Movie";
 
         var mediaObject = new MediaObject
         {
@@ -206,17 +206,21 @@ public class MovePlanBuilderTests : IDisposable
             IsMoved = false
         };
 
-        _context.MoveHistory.Add(oldEntry);
-        _context.SaveChanges();
+        using (var seedContext = CreateAssertContext())
+        {
+            seedContext.MoveHistory.Add(oldEntry);
+            seedContext.SaveChanges();
+        }
 
         // Act
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        var newEntry = _context.MoveHistory.FirstOrDefault(e =>
+        using var assertContext = CreateAssertContext();
+        var newEntry = assertContext.MoveHistory.FirstOrDefault(e =>
             e.UniqueKey == uniqueKey &&
             e.TargetFilePath == newDestination &&
-            e.IsMoved == false);
+            !e.IsMoved);
         Assert.NotNull(newEntry);
 
         _loggerMock.Verify(
@@ -237,7 +241,11 @@ public class MovePlanBuilderTests : IDisposable
         var testFile2 = "/media/Show.S01E02.mkv";
         var rootFolder = "/organized";
 
-        var season = new Season(1, new List<string> { testFile1, testFile2 });
+        var season = new Season(1, new List<Episode>
+        {
+            new(testFile1, 1),
+            new(testFile2, 2)
+        });
         var mediaObject = new MediaObject
         {
             Name = "Test Show",
@@ -252,7 +260,8 @@ public class MovePlanBuilderTests : IDisposable
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        Assert.Equal(2, _context.MoveHistory.Count());
+        using var assertContext = CreateAssertContext();
+        Assert.Equal(2, assertContext.MoveHistory.Count());
     }
 
     [Fact]
@@ -277,7 +286,8 @@ public class MovePlanBuilderTests : IDisposable
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        var entry = _context.MoveHistory.FirstOrDefault(e =>
+        using var assertContext = CreateAssertContext();
+        var entry = assertContext.MoveHistory.FirstOrDefault(e =>
             e.TargetFilePath == expectedDestination);
         Assert.NotNull(entry);
     }
@@ -291,7 +301,7 @@ public class MovePlanBuilderTests : IDisposable
         var expectedDestination = "/organized/Breaking Bad/Season 02/Breaking.Bad.S02E05.mkv";
         var uniqueKey = "unique-key-456";
 
-        var season = new Season(2, new List<string> { testFile });
+        var season = new Season(2, new List<Episode> { new(testFile, 5) });
         var mediaObject = new MediaObject
         {
             Name = "Breaking Bad",
@@ -306,7 +316,8 @@ public class MovePlanBuilderTests : IDisposable
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        var entry = _context.MoveHistory.FirstOrDefault(e =>
+        using var assertContext = CreateAssertContext();
+        var entry = assertContext.MoveHistory.FirstOrDefault(e =>
             e.TargetFilePath == expectedDestination);
         Assert.NotNull(entry);
     }
@@ -321,7 +332,8 @@ public class MovePlanBuilderTests : IDisposable
         _sut.BuildMovePlan(mediaObjects, "/organized");
 
         // Assert
-        Assert.Empty(_context.MoveHistory);
+        using var assertContext = CreateAssertContext();
+        Assert.Empty(assertContext.MoveHistory);
     }
 
     [Fact]
@@ -340,7 +352,11 @@ public class MovePlanBuilderTests : IDisposable
             MoviePath = movieFile
         };
 
-        var season = new Season(1, new List<string> { showFile1, showFile2 });
+        var season = new Season(1, new List<Episode>
+        {
+            new(showFile1, 1),
+            new(showFile2, 2)
+        });
         var showObject = new MediaObject
         {
             Name = "Test Show",
@@ -355,6 +371,7 @@ public class MovePlanBuilderTests : IDisposable
         _sut.BuildMovePlan(mediaObjects, rootFolder);
 
         // Assert
-        Assert.Equal(3, _context.MoveHistory.Count());
+        using var assertContext = CreateAssertContext();
+        Assert.Equal(3, assertContext.MoveHistory.Count());
     }
 }

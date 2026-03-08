@@ -1,4 +1,5 @@
 using MediaOrganizer;
+
 using Xunit;
 
 namespace MediaOrganizer.Tests;
@@ -33,7 +34,7 @@ public class MediaGrouperTests
         var jjk = result.Single(m => m.Type == MediaType.Show && m.Name.Contains("Jujutsu Kaisen", StringComparison.OrdinalIgnoreCase));
         Assert.Single(jjk.Seasons);
         Assert.Equal(1, jjk.Seasons[0].SeasonNumber);
-        Assert.Equal(3, jjk.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(3, jjk.Seasons[0].Episodes.Count);
 
         var taxi = result.Single(m => m.Type == MediaType.Movie);
         Assert.Equal("Taxi Driver", taxi.Name);
@@ -42,7 +43,7 @@ public class MediaGrouperTests
         var darkMatter = result.Single(m => m.Type == MediaType.Show && m.Name.Contains("Dark Matter", StringComparison.OrdinalIgnoreCase));
         Assert.Single(darkMatter.Seasons);
         Assert.Equal(1, darkMatter.Seasons[0].SeasonNumber);
-        Assert.Equal(3, darkMatter.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(3, darkMatter.Seasons[0].Episodes.Count);
     }
 
     // ───────────────────── Movie classification ─────────────────────
@@ -87,7 +88,7 @@ public class MediaGrouperTests
         Assert.Contains("Breaking Bad", show.Name);
         Assert.Single(show.Seasons);
         Assert.Equal(3, show.Seasons[0].SeasonNumber);
-        Assert.Single(show.Seasons[0].EpisodePaths);
+        Assert.Single(show.Seasons[0].Episodes);
     }
 
     [Fact]
@@ -107,10 +108,10 @@ public class MediaGrouperTests
         Assert.Equal(2, show.Seasons.Count);
 
         var s1 = show.Seasons.Single(s => s.SeasonNumber == 1);
-        Assert.Equal(2, s1.EpisodePaths.Count);
+        Assert.Equal(2, s1.Episodes.Count);
 
         var s2 = show.Seasons.Single(s => s.SeasonNumber == 2);
-        Assert.Single(s2.EpisodePaths);
+        Assert.Single(s2.Episodes);
     }
 
     // ───────────────────── Trailing episode number ─────────────────────
@@ -131,7 +132,7 @@ public class MediaGrouperTests
         Assert.Equal(MediaType.Show, show.Type);
         Assert.Single(show.Seasons);
         Assert.Equal(1, show.Seasons[0].SeasonNumber);
-        Assert.Equal(3, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(3, show.Seasons[0].Episodes.Count);
     }
 
     [Fact]
@@ -147,12 +148,12 @@ public class MediaGrouperTests
         var result = _sut.GroupMediaFiles(files);
 
         var show = Assert.Single(result);
-        var paths = show.Seasons[0].EpisodePaths;
+        var episodes = show.Seasons[0].Episodes;
 
         // Episodes should be ordered by episode number
-        Assert.EndsWith("Show 01.mkv", paths[0]);
-        Assert.EndsWith("Show 02.mkv", paths[1]);
-        Assert.EndsWith("Show 03.mkv", paths[2]);
+        Assert.EndsWith("Show 01.mkv", episodes[0].Path);
+        Assert.EndsWith("Show 02.mkv", episodes[1].Path);
+        Assert.EndsWith("Show 03.mkv", episodes[2].Path);
     }
 
     // ───────────────────── Bracket / noise removal ─────────────────────
@@ -170,7 +171,7 @@ public class MediaGrouperTests
 
         var show = Assert.Single(result);
         Assert.Equal(MediaType.Show, show.Type);
-        Assert.Equal(2, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
 
     [Fact]
@@ -186,7 +187,7 @@ public class MediaGrouperTests
 
         var show = Assert.Single(result);
         Assert.Equal(MediaType.Show, show.Type);
-        Assert.Equal(2, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
 
     [Fact]
@@ -220,7 +221,7 @@ public class MediaGrouperTests
 
         Assert.Single(result);
         Assert.Equal(MediaType.Show, result[0].Type);
-        Assert.Equal(2, result[0].Seasons[0].EpisodePaths.Count);
+        Assert.Equal(2, result[0].Seasons[0].Episodes.Count);
     }
 
     [Fact]
@@ -293,7 +294,7 @@ public class MediaGrouperTests
         Assert.Equal(MediaType.Show, show.Type);
         Assert.Single(show.Seasons);
         Assert.Equal(1, show.Seasons[0].SeasonNumber);
-        Assert.Equal(2, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
 
     // ───────────────────── Edge cases ─────────────────────
@@ -328,7 +329,7 @@ public class MediaGrouperTests
 
         var show = Assert.Single(result);
         Assert.Contains("Dark Matter", show.Name);
-        Assert.Equal(2, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
 
     [Fact]
@@ -362,7 +363,7 @@ public class MediaGrouperTests
         var show = Assert.Single(result);
         Assert.Equal(MediaType.Show, show.Type);
         Assert.Single(show.Seasons);
-        Assert.Equal(3, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(3, show.Seasons[0].Episodes.Count);
     }
 
     [Fact]
@@ -378,7 +379,7 @@ public class MediaGrouperTests
 
         var show = Assert.Single(result);
         Assert.Equal(MediaType.Show, show.Type);
-        Assert.Equal(2, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
 
     [Fact]
@@ -421,6 +422,6 @@ public class MediaGrouperTests
 
         var show = Assert.Single(result);
         Assert.Equal(MediaType.Show, show.Type);
-        Assert.Equal(2, show.Seasons[0].EpisodePaths.Count);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
 }

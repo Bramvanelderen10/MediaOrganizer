@@ -76,10 +76,12 @@ public class MediaGrouper
     private string? GetCleanParentFolderName(string filePath)
     {
         var dir = Path.GetDirectoryName(filePath);
-        if (string.IsNullOrEmpty(dir)) return null;
+        if (string.IsNullOrEmpty(dir))
+            return null;
 
         var folderName = Path.GetFileName(dir);
-        if (string.IsNullOrEmpty(folderName)) return null;
+        if (string.IsNullOrEmpty(folderName))
+            return null;
 
         var cleaned = NormalizeSpaces(CleanName(folderName));
         return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
@@ -97,14 +99,16 @@ public class MediaGrouper
 
         for (var i = 0; i < files.Count; i++)
         {
-            if (assigned[i]) continue;
+            if (assigned[i])
+                continue;
 
             var group = new List<ParsedVideoFile> { files[i] };
             assigned[i] = true;
 
             for (var j = i + 1; j < files.Count; j++)
             {
-                if (assigned[j]) continue;
+                if (assigned[j])
+                    continue;
 
                 if (AreTitlesSimilar(files[i].Title, files[j].Title))
                 {
@@ -131,8 +135,10 @@ public class MediaGrouper
 
     private static double ComputeSimilarity(string a, string b)
     {
-        if (a.Length == 0 && b.Length == 0) return 1.0;
-        if (a.Length == 0 || b.Length == 0) return 0.0;
+        if (a.Length == 0 && b.Length == 0)
+            return 1.0;
+        if (a.Length == 0 || b.Length == 0)
+            return 0.0;
 
         var distance = LevenshteinDistance(a, b);
         return 1.0 - (double)distance / Math.Max(a.Length, b.Length);
@@ -144,17 +150,19 @@ public class MediaGrouper
         var n = b.Length;
         var dp = new int[m + 1, n + 1];
 
-        for (var i = 0; i <= m; i++) dp[i, 0] = i;
-        for (var j = 0; j <= n; j++) dp[0, j] = j;
+        for (var i = 0; i <= m; i++)
+            dp[i, 0] = i;
+        for (var j = 0; j <= n; j++)
+            dp[0, j] = j;
 
         for (var i = 1; i <= m; i++)
-        for (var j = 1; j <= n; j++)
-        {
-            var cost = a[i - 1] == b[j - 1] ? 0 : 1;
-            dp[i, j] = Math.Min(
-                Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
-                dp[i - 1, j - 1] + cost);
-        }
+            for (var j = 1; j <= n; j++)
+            {
+                var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                dp[i, j] = Math.Min(
+                    Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
+                    dp[i - 1, j - 1] + cost);
+            }
 
         return dp[m, n];
     }
@@ -235,12 +243,12 @@ public class MediaGrouper
                 }
             }
 
-            var paths = ordered
+            var episodes = ordered
                 .OrderBy(e => e.Episode)
-                .Select(e => e.File.FilePath)
+                .Select(e => new Episode(e.File.FilePath, e.Episode))
                 .ToList();
 
-            result.Add(new Season(seasonNum, paths));
+            result.Add(new Season(seasonNum, episodes));
         }
 
         return result;
