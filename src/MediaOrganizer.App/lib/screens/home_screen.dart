@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'setup_screen.dart';
@@ -13,14 +14,84 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final ApiService _api;
   bool _isLoading = false;
+
+  Timer? _healthTimer;
+  bool _isApiHealthy = false;
+  bool _isCheckingHealth = false;
+  String? _apiUnavailableMessage;
 
   @override
   void initState() {
     super.initState();
     _api = ApiService(baseUrl: widget.apiUrl);
+
+    WidgetsBinding.instance.addObserver(this);
+    _startHealthPolling();
+  }
+
+  @override
+  void dispose() {
+    _stopHealthPolling();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      case AppLifecycleState.resumed:
+        _startHealthPolling();
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        _stopHealthPolling();
+        break;
+    }
+  }
+
+  void _startHealthPolling() {
+    if (_healthTimer != null) return;
+
+    // Run once immediately, then poll every second while the app is open.
+    unawaited(_refreshApiHealth());
+    _healthTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_refreshApiHealth());
+    });
+  }
+
+  void _stopHealthPolling() {
+    _healthTimer?.cancel();
+    _healthTimer = null;
+  }
+
+  Future<void> _refreshApiHealth() async {
+    if (_isCheckingHealth) return;
+    _isCheckingHealth = true;
+
+    try {
+      final reachable = await _api.healthCheck(
+        timeout: const Duration(milliseconds: 800),
+      );
+      if (!mounted) return;
+
+      final message = reachable
+          ? null
+          : 'API not available. Make sure the server is running.';
+
+      if (reachable != _isApiHealthy || message != _apiUnavailableMessage) {
+        setState(() {
+          _isApiHealthy = reachable;
+          _apiUnavailableMessage = message;
+        });
+      }
+    } finally {
+      _isCheckingHealth = false;
+    }
   }
 
   Future<void> _triggerOrganize() async {
@@ -80,6 +151,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final canOrganize = !_isLoading && _isApiHealthy;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Media Organizer'),
@@ -118,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 width: double.infinity,
                 height: 56,
                 child: FilledButton.icon(
-                  onPressed: _isLoading ? null : _triggerOrganize,
+                  onPressed: canOrganize ? _triggerOrganize : null,
                   icon: _isLoading
                       ? const SizedBox(
                           width: 20,
@@ -135,6 +208,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              if (!_isApiHealthy && !_isLoading) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _apiUnavailableMessage ?? 'API not available.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                ),
+              ],
             ],
           ),
         ),

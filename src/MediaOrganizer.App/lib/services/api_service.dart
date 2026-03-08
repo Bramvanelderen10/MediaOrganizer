@@ -23,11 +23,9 @@ class ApiService {
   }
 
   /// Quick connectivity check via GET /health.
-  Future<bool> healthCheck() async {
+  Future<bool> healthCheck({Duration timeout = const Duration(seconds: 5)}) async {
     try {
-      final response = await http.get(_uri('/health')).timeout(
-        const Duration(seconds: 5),
-      );
+      final response = await http.get(_uri('/health')).timeout(timeout);
       return response.statusCode == 200;
     } catch (_) {
       return false;
