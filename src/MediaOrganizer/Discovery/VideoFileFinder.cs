@@ -1,7 +1,16 @@
-namespace MediaOrganizer;
+using MediaOrganizer.Helpers;
+
+namespace MediaOrganizer.Discovery;
 
 public class VideoFileFinder
 {
+    private readonly IFileSystem _fileSystem;
+
+    public VideoFileFinder(IFileSystem fileSystem)
+    {
+        _fileSystem = fileSystem;
+    }
+
     public IReadOnlyList<string> GetVideoFiles(string sourceFolder, IEnumerable<string> extensions)
     {
         var allowedExtensions = extensions
@@ -10,11 +19,11 @@ public class VideoFileFinder
 
         var videoFilePaths = new List<string>();
 
-        foreach (var path in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
+        foreach (var path in _fileSystem.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
         {
             if (IsHiddenFile(path))
             {
-                File.Delete(path);
+                _fileSystem.DeleteFile(path);
                 continue;
             }
 

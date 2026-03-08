@@ -1,10 +1,10 @@
-namespace MediaOrganizer;
+namespace MediaOrganizer.Helpers;
 
 public static class PathHelpers
 {
-    public static string EnsureUniquePath(string fullPath)
+    public static string EnsureUniquePath(string fullPath, IFileSystem fileSystem)
     {
-        if (!File.Exists(fullPath))
+        if (!fileSystem.FileExists(fullPath))
         {
             return fullPath;
         }
@@ -20,7 +20,7 @@ public static class PathHelpers
             candidate = Path.Combine(directory, $"{fileName} ({index}){extension}");
             index++;
         }
-        while (File.Exists(candidate));
+        while (fileSystem.FileExists(candidate));
 
         return candidate;
     }

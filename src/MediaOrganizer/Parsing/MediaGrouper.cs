@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace MediaOrganizer.MediaGrouping;
+namespace MediaOrganizer.Parsing;
 
 public class MediaGrouper
 {

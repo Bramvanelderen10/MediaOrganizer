@@ -1,3 +1,6 @@
+using MediaOrganizer.Cleanup;
+using MediaOrganizer.Helpers;
+
 using Microsoft.Extensions.Logging;
 
 using Moq;
@@ -23,7 +26,7 @@ public class DirectoryCleanerTests
             File.WriteAllText(Path.Combine(child, "Episode 01.mkv"), "video");
 
             var logger = Mock.Of<ILogger<DirectoryCleaner>>();
-            var sut = new DirectoryCleaner(logger);
+            var sut = new DirectoryCleaner(logger, new PhysicalFileSystem());
 
             var deletedFiles = sut.CleanupDirectoriesWithoutMedia(
                 root,
@@ -66,7 +69,7 @@ public class DirectoryCleanerTests
             File.WriteAllText(Path.Combine(eChild, "subtitles.SRT"), "subtitle");
 
             var logger = Mock.Of<ILogger<DirectoryCleaner>>();
-            var sut = new DirectoryCleaner(logger);
+            var sut = new DirectoryCleaner(logger, new PhysicalFileSystem());
 
             var deletedFiles = sut.CleanupDirectoriesWithoutMedia(
                 root,

@@ -1,4 +1,4 @@
-namespace MediaOrganizer.MediaGrouping;
+namespace MediaOrganizer.Parsing;
 
 public record ParsedVideoFile(
     string FilePath,

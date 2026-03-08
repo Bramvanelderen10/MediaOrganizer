@@ -1,17 +1,21 @@
-using MediaOrganizer.MoveHistory;
+using MediaOrganizer.Helpers;
+using MediaOrganizer.History;
 
-namespace MediaOrganizer;
+namespace MediaOrganizer.Execution;
 
 public class VideoMover
 {
     private readonly ILogger<VideoMover> _logger;
+    private readonly IFileSystem _fileSystem;
     private readonly MoveHistoryStore _moveHistoryStore;
 
     public VideoMover(
         ILogger<VideoMover> logger,
+        IFileSystem fileSystem,
         MoveHistoryStore moveHistoryStore)
     {
         _logger = logger;
+        _fileSystem = fileSystem;
         _moveHistoryStore = moveHistoryStore;
     }
 
@@ -21,22 +25,22 @@ public class VideoMover
 
         foreach (var item in movePlan)
         {
-            if (!File.Exists(item.OriginalFilePath))
+            if (!_fileSystem.FileExists(item.OriginalFilePath))
             {
                 _logger.LogWarning("Skipping move for plan item {PlanId}. Source file no longer exists: {SourcePath}", item.Id, item.OriginalFilePath);
                 continue;
             }
 
             var destinationDirectory = Path.GetDirectoryName(item.TargetFilePath)!;
-            Directory.CreateDirectory(destinationDirectory);
+            _fileSystem.CreateDirectory(destinationDirectory);
 
-            var uniqueDestinationPath = PathHelpers.EnsureUniquePath(item.TargetFilePath);
+            var uniqueDestinationPath = PathHelpers.EnsureUniquePath(item.TargetFilePath, _fileSystem);
             if (!string.Equals(uniqueDestinationPath, item.TargetFilePath, StringComparison.OrdinalIgnoreCase))
             {
                 _moveHistoryStore.UpdateTargetPath(item.Id, uniqueDestinationPath);
             }
 
-            File.Move(item.OriginalFilePath, uniqueDestinationPath);
+            _fileSystem.MoveFile(item.OriginalFilePath, uniqueDestinationPath);
             _moveHistoryStore.UpdateIsMoved(item.Id, true);
 
             _logger.LogInformation("Moved '{Source}' -> '{Destination}'", item.OriginalFilePath, uniqueDestinationPath);

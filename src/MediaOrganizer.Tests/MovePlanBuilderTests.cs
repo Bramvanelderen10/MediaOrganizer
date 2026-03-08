@@ -1,6 +1,6 @@
-using MediaOrganizer.MediaGrouping;
-using MediaOrganizer.MoveHistory;
-using MediaOrganizer.MovePlan;
+using MediaOrganizer.Parsing;
+using MediaOrganizer.History;
+using MediaOrganizer.Planning;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;

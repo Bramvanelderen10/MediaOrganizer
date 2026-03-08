@@ -1,4 +1,4 @@
-namespace MediaOrganizer;
+namespace MediaOrganizer.Orchestration;
 
 public class JobExecutor
 {

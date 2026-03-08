@@ -1,17 +1,23 @@
 using System.Text.RegularExpressions;
 
-using MediaOrganizer.MediaGrouping;
-using MediaOrganizer.MoveHistory;
-using MediaOrganizer.MovePlan;
+using MediaOrganizer.Cleanup;
+using MediaOrganizer.Configuration;
+using MediaOrganizer.Discovery;
+using MediaOrganizer.Execution;
+using MediaOrganizer.Helpers;
+using MediaOrganizer.History;
+using MediaOrganizer.Parsing;
+using MediaOrganizer.Planning;
 
 using Microsoft.Extensions.Options;
 
-namespace MediaOrganizer;
+namespace MediaOrganizer.Orchestration;
 
 public class MediaFileOrganizer
 {
     private readonly ILogger<MediaFileOrganizer> _logger;
     private readonly MediaOrganizerOptions _options;
+    private readonly IFileSystem _fileSystem;
     private readonly VideoFileFinder _videoFileFinder;
     private readonly MoveHistoryStore _moveHistoryStore;
     private readonly MediaGrouper _mediaGrouper;
@@ -23,6 +29,7 @@ public class MediaFileOrganizer
     public MediaFileOrganizer(
         ILogger<MediaFileOrganizer> logger,
         IOptions<MediaOrganizerOptions> options,
+        IFileSystem fileSystem,
         VideoFileFinder videoFileFinder,
         MoveHistoryStore moveHistoryStore,
         MediaGrouper mediaGrouper,
@@ -33,6 +40,7 @@ public class MediaFileOrganizer
     {
         _logger = logger;
         _options = options.Value;
+        _fileSystem = fileSystem;
         _videoFileFinder = videoFileFinder;
         _moveHistoryStore = moveHistoryStore;
         _mediaGrouper = mediaGrouper;
@@ -50,7 +58,7 @@ public class MediaFileOrganizer
             throw new InvalidOperationException("Media source folder is not configured. Set MediaOrganizer:SourceFolder in appsettings.");
         }
 
-        if (!Directory.Exists(sourceFolder))
+        if (!_fileSystem.DirectoryExists(sourceFolder))
         {
             throw new DirectoryNotFoundException($"Configured source folder does not exist: {sourceFolder}");
         }
@@ -89,56 +97,6 @@ public class MediaFileOrganizer
             movedSubtitles.Count,
             leftoverFilesRemoved));
     }
-
-    public Task<MediaRestoreSummary> RestoreAllAsync()
-    {
-        var pendingRestores = _moveHistoryStore.GetMovedEntriesForRestore();
-        if (pendingRestores.Count == 0)
-        {
-            return Task.FromResult(new MediaRestoreSummary(0, 0, 0));
-        }
-
-        var restoredCount = 0;
-        var skippedCount = 0;
-
-        foreach (var item in pendingRestores)
-        {
-            if (!File.Exists(item.TargetFilePath))
-            {
-                skippedCount++;
-                _logger.LogWarning(
-                    "Skipping restore for history item {HistoryId}. Target file no longer exists: {TargetPath}",
-                    item.Id,
-                    item.TargetFilePath);
-                continue;
-            }
-
-            if (File.Exists(item.OriginalFilePath))
-            {
-                skippedCount++;
-                _logger.LogWarning(
-                    "Skipping restore for history item {HistoryId}. Source path already exists: {SourcePath}",
-                    item.Id,
-                    item.OriginalFilePath);
-                continue;
-            }
-
-            var sourceDirectory = Path.GetDirectoryName(item.OriginalFilePath)!;
-            Directory.CreateDirectory(sourceDirectory);
-
-            File.Move(item.TargetFilePath, item.OriginalFilePath);
-            restoredCount++;
-            _moveHistoryStore.UpdateIsMoved(item.Id, false);
-
-            _logger.LogInformation("Restored '{Source}' <- '{Target}'", item.OriginalFilePath, item.TargetFilePath);
-        }
-
-        return Task.FromResult(new MediaRestoreSummary(pendingRestores.Count, restoredCount, skippedCount));
-    }
-
-
-
-
 }
 
 public record MediaOrganizeSummary(int TotalFiles, int MovedFiles, int SkippedFiles, int SubtitlesMoved, int LeftoverFilesRemoved);

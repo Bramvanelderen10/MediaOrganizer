@@ -1,4 +1,4 @@
-namespace MediaOrganizer.MoveHistory;
+namespace MediaOrganizer.History;
 
 public class MoveHistoryEntry
 {

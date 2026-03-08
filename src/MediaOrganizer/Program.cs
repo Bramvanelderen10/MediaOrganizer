@@ -1,9 +1,16 @@
 using Microsoft.EntityFrameworkCore;
-using MediaOrganizer;
+
+using MediaOrganizer.Cleanup;
+using MediaOrganizer.Configuration;
+using MediaOrganizer.Discovery;
+using MediaOrganizer.Execution;
+using MediaOrganizer.Helpers;
+using MediaOrganizer.History;
+using MediaOrganizer.Orchestration;
+using MediaOrganizer.Parsing;
+using MediaOrganizer.Planning;
+
 using Scalar.AspNetCore;
-using MediaOrganizer.MovePlan;
-using MediaOrganizer.MoveHistory;
-using MediaOrganizer.MediaGrouping;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +24,7 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddHostedService<ScheduledJobService>();
 builder.Services.AddSingleton<JobExecutor>();
 builder.Services.Configure<MediaOrganizerOptions>(builder.Configuration.GetSection("MediaOrganizer"));
+builder.Services.AddSingleton<IFileSystem, PhysicalFileSystem>();
 builder.Services.AddSingleton<VideoFileFinder>();
 builder.Services.AddSingleton<MediaGrouper>();
 builder.Services.AddSingleton<MovePlanBuilder>();
@@ -31,6 +39,7 @@ builder.Services.AddDbContextFactory<MoveHistoryDbContext>(options =>
 
 builder.Services.AddSingleton<MoveHistoryStore>();
 builder.Services.AddSingleton<MediaFileOrganizer>();
+builder.Services.AddSingleton<MediaFileRestorer>();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -57,9 +66,9 @@ app.MapPost("/trigger-job", async (JobExecutor jobExecutor, TriggerJobRequest? r
 .WithSummary("Triggers the media organization job immediately")
 .WithDescription("Optionally accepts a custom folder path. If omitted, configured defaults are used.");
 
-app.MapPost("/restore-folder-structure", async (MediaFileOrganizer mediaFileOrganizer) =>
+app.MapPost("/restore-folder-structure", async (MediaFileRestorer mediaFileRestorer) =>
 {
-    var summary = await mediaFileOrganizer.RestoreAllAsync();
+    var summary = await mediaFileRestorer.RestoreAllAsync();
     return Results.Ok(new
     {
         message = "Restore completed",

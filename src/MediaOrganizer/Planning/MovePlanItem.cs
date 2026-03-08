@@ -1,4 +1,4 @@
-namespace MediaOrganizer.MovePlan;
+namespace MediaOrganizer.Planning;
 
 /// <summary>
 /// Represents a single file movement that needs to occur as part of the move plan.

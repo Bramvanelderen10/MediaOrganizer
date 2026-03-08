@@ -1,8 +1,8 @@
-using MediaOrganizer.MovePlan;
+using MediaOrganizer.Planning;
 
 using Microsoft.EntityFrameworkCore;
 
-namespace MediaOrganizer.MoveHistory;
+namespace MediaOrganizer.History;
 
 public class MoveHistoryStore
 {
@@ -22,7 +22,7 @@ public class MoveHistoryStore
     /// Saves entries from the move plan to the database.
     /// These entries are created by MovePlanBuilder and represent files that need to be moved.
     /// </summary>
-    public void SaveMovePlanEntries(IReadOnlyCollection<MovePlanItem> planItems)
+    public virtual void SaveMovePlanEntries(IReadOnlyCollection<MovePlanItem> planItems)
     {
         if (planItems.Count == 0)
         {
@@ -50,7 +50,7 @@ public class MoveHistoryStore
     /// Retrieves all entries that need to be moved (those with IsMoved = false).
     /// These are the entries that ExecuteMovePlan should process.
     /// </summary>
-    public IReadOnlyList<MoveHistoryEntry> GetEntriesNeedingMove()
+    public virtual IReadOnlyList<MoveHistoryEntry> GetEntriesNeedingMove()
     {
         using var context = _contextFactory.CreateDbContext();
         return context.MoveHistory
@@ -59,23 +59,29 @@ public class MoveHistoryStore
             .ToList();
     }
 
-    public void UpdateTargetPath(long id, string targetPath)
+    public virtual void UpdateTargetPath(long id, string targetPath)
     {
         using var context = _contextFactory.CreateDbContext();
-        context.MoveHistory
-            .Where(e => e.Id == id)
-            .ExecuteUpdate(s => s.SetProperty(e => e.TargetFilePath, targetPath));
+        var entry = context.MoveHistory.Find(id);
+        if (entry is not null)
+        {
+            entry.TargetFilePath = targetPath;
+            context.SaveChanges();
+        }
     }
 
-    public void UpdateIsMoved(long id, bool isMoved)
+    public virtual void UpdateIsMoved(long id, bool isMoved)
     {
         using var context = _contextFactory.CreateDbContext();
-        context.MoveHistory
-            .Where(e => e.Id == id)
-            .ExecuteUpdate(s => s.SetProperty(e => e.IsMoved, isMoved));
+        var entry = context.MoveHistory.Find(id);
+        if (entry is not null)
+        {
+            entry.IsMoved = isMoved;
+            context.SaveChanges();
+        }
     }
 
-    public IReadOnlyList<MoveHistoryEntry> GetMovedEntriesForRestore()
+    public virtual IReadOnlyList<MoveHistoryEntry> GetMovedEntriesForRestore()
     {
         using var context = _contextFactory.CreateDbContext();
         return context.MoveHistory
@@ -84,7 +90,7 @@ public class MoveHistoryStore
             .ToList();
     }
 
-    private void EnsureDatabase()
+    protected virtual void EnsureDatabase()
     {
         using var context = _contextFactory.CreateDbContext();
 

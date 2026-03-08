@@ -1,6 +1,10 @@
+using MediaOrganizer.Configuration;
+
+using Microsoft.Extensions.Options;
+
 using NCrontab;
 
-namespace MediaOrganizer;
+namespace MediaOrganizer.Orchestration;
 
 public class ScheduledJobService : BackgroundService
 {
@@ -11,16 +15,15 @@ public class ScheduledJobService : BackgroundService
 
     public ScheduledJobService(
         ILogger<ScheduledJobService> logger,
+        IOptions<MediaOrganizerOptions> options,
         JobExecutor jobExecutor)
     {
         _logger = logger;
         _jobExecutor = jobExecutor;
-        
-        // Schedule for 5:00 AM every day
-        // Cron format: "minute hour day month dayofweek"
-        _schedule = CrontabSchedule.Parse("0 5 * * *");
+
+        _schedule = CrontabSchedule.Parse(options.Value.CronSchedule);
         _nextRun = _schedule.GetNextOccurrence(DateTime.Now);
-        
+
         _logger.LogInformation("Scheduled job initialized. Next run: {NextRun}", _nextRun);
     }
 
@@ -35,7 +38,7 @@ public class ScheduledJobService : BackgroundService
             {
                 // Time to run the job
                 _logger.LogInformation("Executing scheduled job at {Time}", now);
-                
+
                 try
                 {
                     await _jobExecutor.ExecuteJobAsync();
@@ -54,10 +57,10 @@ public class ScheduledJobService : BackgroundService
                 // Log countdown every hour
                 if (timeUntilNextRun.TotalMinutes > 60)
                 {
-                    _logger.LogInformation("Next job in {Hours:F1} hours at {NextRun}", 
+                    _logger.LogInformation("Next job in {Hours:F1} hours at {NextRun}",
                         timeUntilNextRun.TotalHours, _nextRun);
                 }
-                
+
                 // Wait for a minute before checking again
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }

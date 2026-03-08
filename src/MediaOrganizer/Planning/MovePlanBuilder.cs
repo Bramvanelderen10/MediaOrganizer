@@ -1,9 +1,9 @@
-using MediaOrganizer.MediaGrouping;
-using MediaOrganizer.MoveHistory;
+using MediaOrganizer.Parsing;
+using MediaOrganizer.History;
 
 using Microsoft.EntityFrameworkCore;
 
-namespace MediaOrganizer.MovePlan;
+namespace MediaOrganizer.Planning;
 
 /// <summary>
 /// Builds a move plan from grouped media files, checking against move history to determine which files need to be moved.

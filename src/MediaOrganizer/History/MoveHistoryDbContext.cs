@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace MediaOrganizer.MoveHistory;
+namespace MediaOrganizer.History;
 
 public class MoveHistoryDbContext : DbContext
 {
