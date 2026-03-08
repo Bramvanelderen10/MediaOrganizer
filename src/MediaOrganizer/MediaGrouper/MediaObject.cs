@@ -1,4 +1,4 @@
-namespace MediaOrganizer;
+namespace MediaOrganizer.MediaGrouper;
 
 public class MediaObject
 {

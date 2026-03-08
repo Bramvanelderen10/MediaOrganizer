@@ -3,6 +3,7 @@ using MediaOrganizer;
 using Scalar.AspNetCore;
 using MediaOrganizer.MovePlan;
 using MediaOrganizer.MoveHistory;
+using MediaOrganizer.MediaGrouper;
 
 var builder = WebApplication.CreateBuilder(args);
 

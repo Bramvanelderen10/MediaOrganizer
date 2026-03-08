@@ -1,3 +1,4 @@
+using MediaOrganizer.MediaGrouper;
 using MediaOrganizer.MoveHistory;
 using MediaOrganizer.MovePlan;
 
