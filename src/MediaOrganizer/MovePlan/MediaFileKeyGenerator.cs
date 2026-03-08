@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace MediaOrganizer;
+namespace MediaOrganizer.MovePlan;
 
 /// <summary>
 /// Generates unique keys for media files based on their file properties.
@@ -16,11 +16,9 @@ public class MediaFileKeyGenerator
     /// <returns>A unique key as a hex string</returns>
     public string GenerateKey(string filePath)
     {
-        var fileInfo = new FileInfo(filePath);
-        
         // Combine file path and size for uniqueness
-        var keyData = $"{filePath}|{fileInfo.Length}";
-        
+        var keyData = $"{filePath}";
+
         using (var sha256 = SHA256.Create())
         {
             var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(keyData));

@@ -1,6 +1,8 @@
+using MediaOrganizer.MoveHistory;
+
 using Microsoft.EntityFrameworkCore;
 
-namespace MediaOrganizer;
+namespace MediaOrganizer.MovePlan;
 
 /// <summary>
 /// Builds a move plan from grouped media files, checking against move history to determine which files need to be moved.
@@ -45,12 +47,6 @@ public class MovePlanBuilder
 
             foreach (var filePath in filesToMove)
             {
-                if (!File.Exists(filePath))
-                {
-                    _logger.LogWarning("File no longer exists, skipping: {FilePath}", filePath);
-                    continue;
-                }
-
                 var uniqueKey = _keyGenerator.GenerateKey(filePath);
                 var destinationPath = ResolveDestinationPath(filePath, media, rootFolder);
 

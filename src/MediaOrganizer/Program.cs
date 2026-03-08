@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using MediaOrganizer;
 using Scalar.AspNetCore;
+using MediaOrganizer.MovePlan;
+using MediaOrganizer.MoveHistory;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,8 +43,8 @@ app.MapGet("/scalar", () => Results.Redirect("/scalar/v1", permanent: false));
 app.MapPost("/trigger-job", async (JobExecutor jobExecutor, TriggerJobRequest? request) =>
 {
     var result = await jobExecutor.ExecuteJobAsync(request?.FolderPath);
-    return Results.Ok(new 
-    { 
+    return Results.Ok(new
+    {
         message = "Job triggered successfully",
         executedAt = DateTime.Now,
         result = result
@@ -66,18 +68,18 @@ app.MapPost("/restore-folder-structure", async (MediaFileOrganizer mediaFileOrga
 .WithSummary("Restores all tracked file moves back to their original structure")
 .WithDescription("Reverts all files tracked in the move-history database that have not yet been restored.");
 
-app.MapGet("/health", () => Results.Ok(new 
-{ 
-    status = "healthy", 
-    timestamp = DateTime.Now 
+app.MapGet("/health", () => Results.Ok(new
+{
+    status = "healthy",
+    timestamp = DateTime.Now
 }))
 .WithName("Health")
 .WithSummary("Returns service health");
 
-app.MapGet("/", () => Results.Ok(new 
-{ 
+app.MapGet("/", () => Results.Ok(new
+{
     message = "Scheduled Job Application",
-    endpoints = new 
+    endpoints = new
     {
         triggerJob = "POST /trigger-job",
         restoreFolderStructure = "POST /restore-folder-structure",

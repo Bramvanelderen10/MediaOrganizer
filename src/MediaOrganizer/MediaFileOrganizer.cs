@@ -1,3 +1,6 @@
+using MediaOrganizer.MoveHistory;
+using MediaOrganizer.MovePlan;
+
 using Microsoft.Extensions.Options;
 
 namespace MediaOrganizer;

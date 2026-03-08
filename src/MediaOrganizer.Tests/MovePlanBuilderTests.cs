@@ -1,8 +1,11 @@
-using MediaOrganizer;
+using MediaOrganizer.MoveHistory;
+using MediaOrganizer.MovePlan;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 using Moq;
+
 using Xunit;
 
 namespace MediaOrganizer.Tests;
@@ -55,23 +58,13 @@ public class MovePlanBuilderTests : IDisposable
 
         var mediaObjects = new List<MediaObject> { mediaObject };
 
-        // Create temp file
-        File.WriteAllText(testFile, "test");
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
-
-            // Assert
-            var entry = _context.MoveHistory.FirstOrDefault(e => e.UniqueKey == uniqueKey && e.OriginalFilePath == testFile);
-            Assert.NotNull(entry);
-            Assert.False(entry.IsMoved);
-        }
-        finally
-        {
-            File.Delete(testFile);
-        }
+        // Assert
+        var entry = _context.MoveHistory.FirstOrDefault(e => e.UniqueKey == uniqueKey && e.OriginalFilePath == testFile);
+        Assert.NotNull(entry);
+        Assert.False(entry.IsMoved);
     }
 
     [Fact]
@@ -134,29 +127,19 @@ public class MovePlanBuilderTests : IDisposable
         _context.MoveHistory.Add(existingEntry);
         _context.SaveChanges();
 
-        // Create temp file
-        File.WriteAllText(testFile, "test");
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
-
-            // Assert
-            Assert.Single(_context.MoveHistory);
-            _loggerMock.Verify(
-                l => l.Log(
-                    LogLevel.Information,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("already moved successfully")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<System.Func<It.IsAnyType, Exception?, string>>()),
-                Times.Once);
-        }
-        finally
-        {
-            File.Delete(testFile);
-        }
+        // Assert
+        Assert.Single(_context.MoveHistory);
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("already moved successfully")),
+                It.IsAny<Exception>(),
+                It.IsAny<System.Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
     }
 
     [Fact]
@@ -188,21 +171,12 @@ public class MovePlanBuilderTests : IDisposable
         _context.MoveHistory.Add(existingEntry);
         _context.SaveChanges();
 
-        // Create temp file
-        File.WriteAllText(testFile, "test");
 
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-            // Assert
-            Assert.Single(_context.MoveHistory);
-        }
-        finally
-        {
-            File.Delete(testFile);
-        }
+        // Assert
+        Assert.Single(_context.MoveHistory);
     }
 
     [Fact]
@@ -235,34 +209,24 @@ public class MovePlanBuilderTests : IDisposable
         _context.MoveHistory.Add(oldEntry);
         _context.SaveChanges();
 
-        // Create temp file
-        File.WriteAllText(testFile, "test");
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
+        // Assert
+        var newEntry = _context.MoveHistory.FirstOrDefault(e =>
+            e.UniqueKey == uniqueKey &&
+            e.TargetFilePath == newDestination &&
+            e.IsMoved == false);
+        Assert.NotNull(newEntry);
 
-            // Assert
-            var newEntry = _context.MoveHistory.FirstOrDefault(e =>
-                e.UniqueKey == uniqueKey &&
-                e.TargetFilePath == newDestination &&
-                e.IsMoved == false);
-            Assert.NotNull(newEntry);
-
-            _loggerMock.Verify(
-                l => l.Log(
-                    LogLevel.Information,
-                    It.IsAny<EventId>(),
-                    It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Destination path changed")),
-                    It.IsAny<Exception>(),
-                    It.IsAny<System.Func<It.IsAnyType, Exception?, string>>()),
-                Times.Once);
-        }
-        finally
-        {
-            File.Delete(testFile);
-        }
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => v.ToString()!.Contains("Destination path changed")),
+                It.IsAny<Exception>(),
+                It.IsAny<System.Func<It.IsAnyType, Exception?, string>>()),
+            Times.Once);
     }
 
     [Fact]
@@ -272,8 +236,6 @@ public class MovePlanBuilderTests : IDisposable
         var testFile1 = "/media/Show.S01E01.mkv";
         var testFile2 = "/media/Show.S01E02.mkv";
         var rootFolder = "/organized";
-        var uniqueKey1 = "unique-key-1";
-        var uniqueKey2 = "unique-key-2";
 
         var season = new Season(1, new List<string> { testFile1, testFile2 });
         var mediaObject = new MediaObject
@@ -286,23 +248,11 @@ public class MovePlanBuilderTests : IDisposable
         var mediaObjects = new List<MediaObject> { mediaObject };
 
 
-        // Create temp files
-        File.WriteAllText(testFile1, "test");
-        File.WriteAllText(testFile2, "test");
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
-
-            // Assert
-            Assert.Equal(2, _context.MoveHistory.Count());
-        }
-        finally
-        {
-            File.Delete(testFile1);
-            File.Delete(testFile2);
-        }
+        // Assert
+        Assert.Equal(2, _context.MoveHistory.Count());
     }
 
     [Fact]
@@ -323,24 +273,13 @@ public class MovePlanBuilderTests : IDisposable
 
         var mediaObjects = new List<MediaObject> { mediaObject };
 
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-        // Create temp file
-        File.WriteAllText(testFile, "test");
-
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
-
-            // Assert
-            var entry = _context.MoveHistory.FirstOrDefault(e =>
-                e.TargetFilePath == expectedDestination);
-            Assert.NotNull(entry);
-        }
-        finally
-        {
-            File.Delete(testFile);
-        }
+        // Assert
+        var entry = _context.MoveHistory.FirstOrDefault(e =>
+            e.TargetFilePath == expectedDestination);
+        Assert.NotNull(entry);
     }
 
     [Fact]
@@ -363,23 +302,13 @@ public class MovePlanBuilderTests : IDisposable
         var mediaObjects = new List<MediaObject> { mediaObject };
 
 
-        // Create temp file
-        File.WriteAllText(testFile, "test");
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
-
-            // Assert
-            var entry = _context.MoveHistory.FirstOrDefault(e =>
-                e.TargetFilePath == expectedDestination);
-            Assert.NotNull(entry);
-        }
-        finally
-        {
-            File.Delete(testFile);
-        }
+        // Assert
+        var entry = _context.MoveHistory.FirstOrDefault(e =>
+            e.TargetFilePath == expectedDestination);
+        Assert.NotNull(entry);
     }
 
     [Fact]
@@ -422,24 +351,10 @@ public class MovePlanBuilderTests : IDisposable
         var mediaObjects = new List<MediaObject> { movieObject, showObject };
 
 
-        // Create temp files
-        File.WriteAllText(movieFile, "test");
-        File.WriteAllText(showFile1, "test");
-        File.WriteAllText(showFile2, "test");
+        // Act
+        _sut.BuildMovePlan(mediaObjects, rootFolder);
 
-        try
-        {
-            // Act
-            _sut.BuildMovePlan(mediaObjects, rootFolder);
-
-            // Assert
-            Assert.Equal(3, _context.MoveHistory.Count());
-        }
-        finally
-        {
-            File.Delete(movieFile);
-            File.Delete(showFile1);
-            File.Delete(showFile2);
-        }
+        // Assert
+        Assert.Equal(3, _context.MoveHistory.Count());
     }
 }

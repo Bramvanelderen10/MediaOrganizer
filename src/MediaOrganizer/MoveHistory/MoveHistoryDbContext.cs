@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace MediaOrganizer;
+namespace MediaOrganizer.MoveHistory;
 
 public class MoveHistoryDbContext : DbContext
 {
@@ -21,7 +21,7 @@ public class MoveHistoryDbContext : DbContext
             entity.Property(e => e.TargetFilePath).IsRequired();
             entity.Property(e => e.MoveDateTime).HasDefaultValue(DateTime.UtcNow);
             entity.Property(e => e.IsMoved).HasDefaultValue(false);
-            
+
             // Indexes for efficient lookups
             entity.HasIndex(e => e.UniqueKey).IsUnique(false);
             entity.HasIndex(e => e.IsMoved);

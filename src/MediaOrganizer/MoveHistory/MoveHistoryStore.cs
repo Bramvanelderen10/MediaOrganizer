@@ -1,6 +1,8 @@
+using MediaOrganizer.MovePlan;
+
 using Microsoft.EntityFrameworkCore;
 
-namespace MediaOrganizer;
+namespace MediaOrganizer.MoveHistory;
 
 public class MoveHistoryStore
 {

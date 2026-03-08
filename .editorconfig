@@ -73,12 +73,15 @@ csharp_style_conditional_delegate_call = true:suggestion
 # C# formatting rules
 csharp_prefer_braces = true:silent
 csharp_prefer_simple_default_expression = true:suggestion
+csharp_style_allow_multiple_blank_lines_experimental = false:suggestion
+dotnet_style_namespace_match_folder = true:suggestion
 
 # Naming conventions
 dotnet_style_predefined_type_for_locals_parameters_members = true:suggestion
 dotnet_style_predefined_type_for_member_access = true:suggestion
 dotnet_style_require_accessibility_modifiers = for_non_interface_members:silent
 dotnet_style_readonly_field = true:suggestion
+dotnet_diagnostic.IDE0130.severity = warning
 
 # .NET formatting rules
 [*.cs]
