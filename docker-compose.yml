@@ -1,17 +1,28 @@
 services:
-  scheduled-job-app:
-    build: .
-    container_name: scheduled-job-app
+  media-organizer:
+    image: ghcr.io/bramvanelderen10/mediaorganizer:main
+    container_name: media-organizer
     ports:
       - "45263:45263"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - TZ=Europe/Amsterdam
+      - MediaOrganizer__SourceFolder=/media/source
+      - MediaOrganizer__DestinationFolder=/media/destination
+      - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
     restart: unless-stopped
     volumes:
-      - ./logs:/app/logs
+      # Map your host source folder (where unorganized videos live)
+      - /path/to/your/videos/source:/media/source
+      # Map your host destination folder (where organized videos will be moved)
+      - /path/to/your/videos/destination:/media/destination
+      # Persist the SQLite move-history database on the host
+      - media-organizer-data:/data
     networks:
       - local-network
+
+volumes:
+  media-organizer-data:
 
 networks:
   local-network:
