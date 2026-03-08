@@ -1,0 +1,18 @@
+services:
+  scheduled-job-app:
+    build: .
+    container_name: scheduled-job-app
+    ports:
+      - "45263:45263"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - TZ=Europe/Amsterdam
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - local-network
+
+networks:
+  local-network:
+    driver: bridge
