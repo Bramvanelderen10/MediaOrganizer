@@ -1,3 +1,3 @@
-namespace MediaOrganizer.MediaGrouper;
+namespace MediaOrganizer.MediaGrouping;
 
 public record Episode(string Path, int EpisodeNumber);

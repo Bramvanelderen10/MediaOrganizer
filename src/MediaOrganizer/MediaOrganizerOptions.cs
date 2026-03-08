@@ -12,5 +12,10 @@ public class MediaOrganizerOptions
     [
         ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg"
     ];
+
+    public string[] SubtitleExtensions { get; set; } =
+    [
+        ".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"
+    ];
 }
 

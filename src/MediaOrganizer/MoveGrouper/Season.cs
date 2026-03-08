@@ -1,4 +1,4 @@
-namespace MediaOrganizer.MediaGrouper;
+namespace MediaOrganizer.MediaGrouping;
 
 public class Season(int seasonNumber, List<Episode> episodes)
 {

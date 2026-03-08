@@ -3,7 +3,7 @@ using MediaOrganizer;
 using Scalar.AspNetCore;
 using MediaOrganizer.MovePlan;
 using MediaOrganizer.MoveHistory;
-using MediaOrganizer.MediaGrouper;
+using MediaOrganizer.MediaGrouping;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +20,9 @@ builder.Services.Configure<MediaOrganizerOptions>(builder.Configuration.GetSecti
 builder.Services.AddSingleton<VideoFileFinder>();
 builder.Services.AddSingleton<MediaGrouper>();
 builder.Services.AddSingleton<MovePlanBuilder>();
+builder.Services.AddSingleton<VideoMover>();
+builder.Services.AddSingleton<SubtitleMover>();
+builder.Services.AddSingleton<DirectoryCleaner>();
 
 var dbPath = MoveHistoryStore.ResolveDatabasePath(
     builder.Configuration.GetValue<string>("MediaOrganizer:MoveHistoryDatabasePath") ?? "");

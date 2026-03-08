@@ -1,3 +1,6 @@
+using System.Text.RegularExpressions;
+
+using MediaOrganizer.MediaGrouping;
 using MediaOrganizer.MoveHistory;
 using MediaOrganizer.MovePlan;
 
@@ -13,6 +16,9 @@ public class MediaFileOrganizer
     private readonly MoveHistoryStore _moveHistoryStore;
     private readonly MediaGrouper _mediaGrouper;
     private readonly MovePlanBuilder _movePlanBuilder;
+    private readonly VideoMover _moveExecutor;
+    private readonly SubtitleMover _subtitleMover;
+    private readonly DirectoryCleaner _directoryCleaner;
 
     public MediaFileOrganizer(
         ILogger<MediaFileOrganizer> logger,
@@ -20,7 +26,10 @@ public class MediaFileOrganizer
         VideoFileFinder videoFileFinder,
         MoveHistoryStore moveHistoryStore,
         MediaGrouper mediaGrouper,
-        MovePlanBuilder movePlanBuilder)
+        MovePlanBuilder movePlanBuilder,
+        VideoMover moveExecutor,
+        SubtitleMover subtitleMover,
+        DirectoryCleaner directoryCleaner)
     {
         _logger = logger;
         _options = options.Value;
@@ -28,6 +37,9 @@ public class MediaFileOrganizer
         _moveHistoryStore = moveHistoryStore;
         _mediaGrouper = mediaGrouper;
         _movePlanBuilder = movePlanBuilder;
+        _moveExecutor = moveExecutor;
+        _subtitleMover = subtitleMover;
+        _directoryCleaner = directoryCleaner;
     }
 
     public Task<MediaOrganizeSummary> OrganizeAsync(string? sourceFolderOverride = null)
@@ -47,6 +59,10 @@ public class MediaFileOrganizer
             ? _options.VideoExtensions
             : new[] { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg" };
 
+        var subtitleExtensions = _options.SubtitleExtensions is { Length: > 0 }
+            ? _options.SubtitleExtensions
+            : [".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"];
+
         var allVideoFiles = _videoFileFinder.GetVideoFiles(sourceFolder, extensions);
 
         var mediaGroups = _mediaGrouper.GroupMediaFiles(allVideoFiles);
@@ -57,11 +73,21 @@ public class MediaFileOrganizer
 
         // Get entries that need to be moved (those with IsMoved = false)
         var entriesToMove = _moveHistoryStore.GetEntriesNeedingMove();
-        var movedCount = ExecuteMovePlan(entriesToMove);
+        var movedFiles = _moveExecutor.ExecuteMovePlan(entriesToMove);
 
+        // Move companion subtitle files alongside their videos
+        var movedSubtitles = _subtitleMover.MoveCompanionSubtitles(movedFiles, subtitleExtensions, sourceFolder);
+
+        // Cleanup: remove any directory subtrees that no longer contain video/subtitle files
+        var leftoverFilesRemoved = _directoryCleaner.CleanupDirectoriesWithoutMedia(sourceFolder, extensions, subtitleExtensions);
         var skippedCount = allVideoFiles.Count - entriesToMove.Count;
 
-        return Task.FromResult(new MediaOrganizeSummary(allVideoFiles.Count, movedCount, skippedCount));
+        return Task.FromResult(new MediaOrganizeSummary(
+            allVideoFiles.Count,
+            movedFiles.Count,
+            skippedCount,
+            movedSubtitles.Count,
+            leftoverFilesRemoved));
     }
 
     public Task<MediaRestoreSummary> RestoreAllAsync()
@@ -110,61 +136,11 @@ public class MediaFileOrganizer
         return Task.FromResult(new MediaRestoreSummary(pendingRestores.Count, restoredCount, skippedCount));
     }
 
-    private int ExecuteMovePlan(IReadOnlyCollection<MoveHistoryEntry> movePlan)
-    {
-        var movedCount = 0;
 
-        foreach (var item in movePlan)
-        {
-            if (!File.Exists(item.OriginalFilePath))
-            {
-                _logger.LogWarning("Skipping move for plan item {PlanId}. Source file no longer exists: {SourcePath}", item.Id, item.OriginalFilePath);
-                continue;
-            }
 
-            var destinationDirectory = Path.GetDirectoryName(item.TargetFilePath)!;
-            Directory.CreateDirectory(destinationDirectory);
 
-            var uniqueDestinationPath = EnsureUniquePath(item.TargetFilePath);
-            if (!string.Equals(uniqueDestinationPath, item.TargetFilePath, StringComparison.OrdinalIgnoreCase))
-            {
-                _moveHistoryStore.UpdateTargetPath(item.Id, uniqueDestinationPath);
-            }
-
-            File.Move(item.OriginalFilePath, uniqueDestinationPath);
-            _moveHistoryStore.UpdateIsMoved(item.Id, true);
-
-            _logger.LogInformation("Moved '{Source}' -> '{Destination}'", item.OriginalFilePath, uniqueDestinationPath);
-            movedCount++;
-        }
-
-        return movedCount;
-    }
-
-    private static string EnsureUniquePath(string fullPath)
-    {
-        if (!File.Exists(fullPath))
-        {
-            return fullPath;
-        }
-
-        var directory = Path.GetDirectoryName(fullPath)!;
-        var extension = Path.GetExtension(fullPath);
-        var fileName = Path.GetFileNameWithoutExtension(fullPath);
-
-        var index = 1;
-        string candidate;
-        do
-        {
-            candidate = Path.Combine(directory, $"{fileName} ({index}){extension}");
-            index++;
-        }
-        while (File.Exists(candidate));
-
-        return candidate;
-    }
 }
 
-public record MediaOrganizeSummary(int TotalFiles, int MovedFiles, int SkippedFiles);
+public record MediaOrganizeSummary(int TotalFiles, int MovedFiles, int SkippedFiles, int SubtitlesMoved, int LeftoverFilesRemoved);
 
 public record MediaRestoreSummary(int TotalPendingFiles, int RestoredFiles, int SkippedFiles);

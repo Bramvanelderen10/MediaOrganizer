@@ -1,4 +1,4 @@
-namespace MediaOrganizer.MediaGrouper;
+namespace MediaOrganizer.MediaGrouping;
 
 // ──────────────────────────── Models ────────────────────────────
 

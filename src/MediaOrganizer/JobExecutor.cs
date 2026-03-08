@@ -14,13 +14,13 @@ public class JobExecutor
     public async Task<string> ExecuteJobAsync(string? sourceFolderOverride = null)
     {
         _logger.LogInformation("=== Job execution started at {Time} ===", DateTime.Now);
-        
+
         try
         {
             var summary = await _mediaFileOrganizer.OrganizeAsync(sourceFolderOverride);
-            var result = $"Processed {summary.TotalFiles} video files. Moved {summary.MovedFiles}, skipped {summary.SkippedFiles}.";
+            var result = $"Processed {summary.TotalFiles} video files. Moved {summary.MovedFiles}, skipped {summary.SkippedFiles}. Subtitles moved: {summary.SubtitlesMoved}. Leftover files removed: {summary.LeftoverFilesRemoved}.";
             _logger.LogInformation("=== Job execution completed at {Time} ===", DateTime.Now);
-            
+
             return result;
         }
         catch (Exception ex)

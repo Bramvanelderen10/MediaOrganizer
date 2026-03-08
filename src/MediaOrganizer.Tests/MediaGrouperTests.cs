@@ -1,4 +1,5 @@
-using MediaOrganizer.MediaGrouper;
+
+using MediaOrganizer.MediaGrouping;
 
 using Xunit;
 
