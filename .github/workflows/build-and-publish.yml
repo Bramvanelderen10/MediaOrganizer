@@ -145,6 +145,28 @@ jobs:
           mkdir -p android/app
           printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > android/app/upload-keystore.jks
 
+      - name: Verify Android signing inputs (non-secret)
+        working-directory: ${{ env.APP_DIR }}
+        shell: bash
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/${{ env.APP_DIR }}/android/app/upload-keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          echo "Keystore path: ${KEYSTORE_PATH}"
+          if [ -f "${KEYSTORE_PATH}" ]; then
+            echo "Keystore file exists: yes"
+          else
+            echo "Keystore file exists: no"
+          fi
+
+          if [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ]; then echo "Has ANDROID_KEYSTORE_PASSWORD: yes"; else echo "Has ANDROID_KEYSTORE_PASSWORD: no"; fi
+          if [ -n "${ANDROID_KEY_ALIAS:-}" ]; then echo "Has ANDROID_KEY_ALIAS: yes"; else echo "Has ANDROID_KEY_ALIAS: no"; fi
+          if [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then echo "Has ANDROID_KEY_PASSWORD: yes"; else echo "Has ANDROID_KEY_PASSWORD: no"; fi
+
       - name: Build Android APK (release)
         working-directory: ${{ env.APP_DIR }}
         env:

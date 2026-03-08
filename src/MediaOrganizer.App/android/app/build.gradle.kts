@@ -10,27 +10,24 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
-    val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
-    val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-    val keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-    val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    val keystorePath: String? = System.getenv("ANDROID_KEYSTORE_PATH")
+    val keystorePassword: String? = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val keystoreKeyAlias: String? = System.getenv("ANDROID_KEY_ALIAS")
+    val keystoreKeyPassword: String? = System.getenv("ANDROID_KEY_PASSWORD")
 
     val useReleaseSigning =
         !keystorePath.isNullOrBlank() &&
             !keystorePassword.isNullOrBlank() &&
-            !keyAlias.isNullOrBlank() &&
-            !keyPassword.isNullOrBlank() &&
-            (keystorePath?.let { file(it).exists() } == true)
+            !keystoreKeyAlias.isNullOrBlank() &&
+            !keystoreKeyPassword.isNullOrBlank() &&
+            (keystorePath?.let { file(it).exists() } ?: false)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
+    // NOTE: Using Kotlin compilerOptions DSL instead of deprecated kotlinOptions.jvmTarget.
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.bramve.mediaorganizer"
@@ -47,8 +44,8 @@ android {
             create("release") {
                 storeFile = file(keystorePath!!)
                 storePassword = keystorePassword
-                keyAlias = keyAlias
-                keyPassword = keyPassword
+                keyAlias = keystoreKeyAlias
+                keyPassword = keystoreKeyPassword
             }
         }
     }
@@ -63,6 +60,12 @@ android {
                     signingConfigs.getByName("debug")
                 }
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
