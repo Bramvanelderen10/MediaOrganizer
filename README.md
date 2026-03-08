@@ -29,6 +29,8 @@ A .NET 10 worker service that automatically organizes video files into a clean f
 
 ### 1. Create a `docker-compose.yml`
 
+Note: for best performance and reliability, mount a single parent media folder and keep `source/` and `destination/` as subfolders under it. This keeps moves on the same filesystem (fast rename) and avoids cross-device move errors.
+
 ```yaml
 services:
   media-organizer:
@@ -44,8 +46,7 @@ services:
       - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
     restart: unless-stopped
     volumes:
-      - /path/to/your/videos/source:/media/source
-      - /path/to/your/videos/destination:/media/destination
+      - /path/to/your/videos:/media
       - media-organizer-data:/data
 
 volumes:
