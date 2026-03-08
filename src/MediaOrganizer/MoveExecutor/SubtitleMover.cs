@@ -59,7 +59,19 @@ public class SubtitleMover
                     : FindBestVideoMatch(subFile, videos) ?? videos[0];
 
                 var destDir = Path.GetDirectoryName(targetVideo.DestinationPath)!;
-                var destPath = Path.Combine(destDir, Path.GetFileName(subFile));
+                var videoStem = Path.GetFileNameWithoutExtension(targetVideo.DestinationPath);
+                var subFileName = Path.GetFileName(subFile);
+
+                // Prefix subtitle with the video name so files from different episodes
+                // don't collide (e.g. "Health Care S01E03.2_English.srt").
+                // Skip the prefix when the subtitle already contains the video's name.
+                if (!Path.GetFileNameWithoutExtension(subFileName)
+                         .Contains(videoStem, StringComparison.OrdinalIgnoreCase))
+                {
+                    subFileName = $"{videoStem}.{subFileName}";
+                }
+
+                var destPath = Path.Combine(destDir, subFileName);
                 destPath = PathHelpers.EnsureUniquePath(destPath);
 
                 Directory.CreateDirectory(destDir);
@@ -80,8 +92,23 @@ public class SubtitleMover
     {
         var subName = Path.GetFileNameWithoutExtension(subtitlePath);
 
-        // Try matching by SxxExx pattern
+        // Try matching by SxxExx pattern in the subtitle filename first
         var subSeMatch = Regex.Match(subName, @"S\d{1,2}E\d{1,4}", RegexOptions.IgnoreCase);
+
+        // If filename has no SxxExx, check parent directory names (handles Subs/Show.S01E01.../2_English.srt)
+        if (!subSeMatch.Success)
+        {
+            var dir = Path.GetDirectoryName(subtitlePath);
+            while (!string.IsNullOrEmpty(dir))
+            {
+                var dirName = Path.GetFileName(dir);
+                subSeMatch = Regex.Match(dirName, @"S\d{1,2}E\d{1,4}", RegexOptions.IgnoreCase);
+                if (subSeMatch.Success)
+                    break;
+                dir = Path.GetDirectoryName(dir);
+            }
+        }
+
         if (subSeMatch.Success)
         {
             var subPattern = subSeMatch.Value;
