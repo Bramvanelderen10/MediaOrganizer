@@ -4,6 +4,11 @@ import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'setup_screen.dart';
 
+enum _AppMenuAction {
+  forgetShowSeason,
+  resetApiUrl,
+}
+
 /// Main screen with a single button to trigger the organize job.
 class HomeScreen extends StatefulWidget {
   final String apiUrl;
@@ -360,6 +365,132 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _showForgetSeasonDialog() async {
+    final showController = TextEditingController();
+    final seasonController = TextEditingController();
+
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) {
+          var isSubmitting = false;
+          String? errorText;
+
+          return StatefulBuilder(
+            builder: (context, setDialogState) => AlertDialog(
+              title: const Text('Forget show season'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: showController,
+                    enabled: !isSubmitting,
+                    textInputAction: TextInputAction.next,
+                    decoration: const InputDecoration(
+                      labelText: 'Show name',
+                      hintText: 'Sousou no Frieren',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: seasonController,
+                    enabled: !isSubmitting,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Season number',
+                      hintText: '2',
+                    ),
+                  ),
+                  if (errorText != null) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      errorText!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final showName = showController.text.trim();
+                          final seasonNumber = int.tryParse(
+                            seasonController.text.trim(),
+                          );
+
+                          if (showName.isEmpty) {
+                            setDialogState(() {
+                              errorText = 'Show name is required.';
+                            });
+                            return;
+                          }
+
+                          if (seasonNumber == null || seasonNumber <= 0) {
+                            setDialogState(() {
+                              errorText = 'Season number must be greater than 0.';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            isSubmitting = true;
+                            errorText = null;
+                          });
+
+                          try {
+                            await _api.forgetShowSeason(
+                              showName: showName,
+                              seasonNumber: seasonNumber,
+                            );
+
+                            if (!mounted) return;
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Forgot history for "$showName" season $seasonNumber.',
+                                ),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            setDialogState(() {
+                              isSubmitting = false;
+                              errorText = 'Failed to forget season: $e';
+                            });
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Forget'),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    } finally {
+      showController.dispose();
+      seasonController.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final canOrganize = !_isLoading && _isApiHealthy;
@@ -368,10 +499,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('Media Organizer'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Reset API URL',
-            onPressed: _resetConfig,
+          PopupMenuButton<_AppMenuAction>(
+            tooltip: 'Menu',
+            onSelected: (action) {
+              switch (action) {
+                case _AppMenuAction.forgetShowSeason:
+                  unawaited(_showForgetSeasonDialog());
+                  break;
+                case _AppMenuAction.resetApiUrl:
+                  unawaited(_resetConfig());
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem<_AppMenuAction>(
+                value: _AppMenuAction.forgetShowSeason,
+                child: Text('Forget show season'),
+              ),
+              PopupMenuItem<_AppMenuAction>(
+                value: _AppMenuAction.resetApiUrl,
+                child: Text('Reset API URL'),
+              ),
+            ],
+            icon: const Icon(Icons.more_vert),
           ),
         ],
       ),

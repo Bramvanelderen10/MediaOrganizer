@@ -1,4 +1,5 @@
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import 'sse_client.dart';
 
@@ -21,6 +22,29 @@ class ApiService {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return response.body;
     }
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Forgets move history for a specific show season via POST /forget-show-season.
+  Future<String> forgetShowSeason({
+    required String showName,
+    required int seasonNumber,
+  }) async {
+    final response = await http.post(
+      _uri('/forget-show-season'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'showName': showName,
+        'seasonNumber': seasonNumber,
+      }),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body;
+    }
+
     throw ApiException(response.statusCode, response.body);
   }
 
