@@ -86,6 +86,39 @@ app.MapPost("/restore-folder-structure", async (MediaFileRestorer mediaFileResto
 .WithSummary("Restores all tracked file moves back to their original structure")
 .WithDescription("Reverts all files tracked in the move-history database that have not yet been restored.");
 
+app.MapPost("/forget-show-season", (MoveHistoryStore moveHistoryStore, ForgetShowSeasonRequest request) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ShowName))
+    {
+        return Results.BadRequest(new
+        {
+            message = "showName is required"
+        });
+    }
+
+    if (request.SeasonNumber <= 0)
+    {
+        return Results.BadRequest(new
+        {
+            message = "seasonNumber must be greater than 0"
+        });
+    }
+
+    var deletedCount = moveHistoryStore.ForgetShowSeason(request.ShowName, request.SeasonNumber);
+
+    return Results.Ok(new
+    {
+        message = "Forget season completed",
+        executedAt = DateTime.Now,
+        showName = request.ShowName,
+        seasonNumber = request.SeasonNumber,
+        deletedCount = deletedCount
+    });
+})
+.WithName("ForgetShowSeason")
+.WithSummary("Deletes move-history entries for a specific show season")
+.WithDescription("Removes all tracked move-history rows for the given show name and season number.");
+
 app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",
@@ -149,6 +182,7 @@ app.MapGet("/", () => Results.Ok(new
     {
         triggerJob = "POST /trigger-job",
         restoreFolderStructure = "POST /restore-folder-structure",
+        forgetShowSeason = "POST /forget-show-season",
         health = "GET /health",
         streamLogs = "GET /logs/stream",
         openApiSpec = "GET /openapi/v1.json",
@@ -162,3 +196,4 @@ app.MapGet("/", () => Results.Ok(new
 app.Run();
 
 public record TriggerJobRequest(string? FolderPath);
+public record ForgetShowSeasonRequest(string ShowName, int SeasonNumber);
