@@ -384,6 +384,24 @@ public class MediaGrouperTests
     }
 
     [Fact]
+    public void GroupMediaFiles_SeasonDashEpisode_ParsedCorrectly()
+    {
+        var files = new List<string>
+        {
+            "/anime/[SubsPlease] Sousou no Frieren S2 - 03 (1080p) [7556A22B].mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Single(show.Seasons);
+        Assert.Equal(2, show.Seasons[0].SeasonNumber);
+        Assert.Single(show.Seasons[0].Episodes);
+        Assert.Equal(3, show.Seasons[0].Episodes[0].EpisodeNumber);
+    }
+
+    [Fact]
     public void GroupMediaFiles_UnderscoreSeparatedFilename_CleanedCorrectly()
     {
         var files = new List<string> { "/dl/Some_Movie_Title.mkv" };

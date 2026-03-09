@@ -9,6 +9,7 @@ public class MediaGrouper
     private static readonly Regex CodecPattern = new(@"\b(x264|x265|h\.?264|h\.?265|HEVC|AVC|AAC|DTS|FLAC|10bit|8bit)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ReleaseGroupPattern = new(@"\b(ELiTE|YIFY|BONE|AAC5|RARBG|FGT|LOL|ETTV|EZTVx?|SubsPlease|BluRay|BRRip|WEBRip|WEB[\-\.]?DL|HDRip|DVDRip|Dual\s*Audio|PROPER|REPACK|INTERNAL)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex SeasonEpisodePattern = new(@"\bS(?<season>\d{1,2})\s*E(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex SeasonDashEpisodePattern = new(@"\bS(?<season>\d{1,2})\s*[-–—]\s*(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TrailingNumberPattern = new(@"\s+(?<episode>\d{1,4})\s*$", RegexOptions.Compiled);
     private static readonly Regex MultiSpacePattern = new(@"\s+", RegexOptions.Compiled);
 
@@ -39,6 +40,17 @@ public class MediaGrouper
             var season = int.Parse(seMatch.Groups["season"].Value);
             var episode = int.Parse(seMatch.Groups["episode"].Value);
             var title = NormalizeSpaces(cleaned[..seMatch.Index]);
+
+            return new ParsedVideoFile(filePath, title, cleaned, season, episode, GetCleanParentFolderName(filePath));
+        }
+
+        // Try Sxx - xx (e.g. S2 - 03)
+        var sdMatch = SeasonDashEpisodePattern.Match(cleaned);
+        if (sdMatch.Success)
+        {
+            var season = int.Parse(sdMatch.Groups["season"].Value);
+            var episode = int.Parse(sdMatch.Groups["episode"].Value);
+            var title = NormalizeSpaces(cleaned[..sdMatch.Index]);
 
             return new ParsedVideoFile(filePath, title, cleaned, season, episode, GetCleanParentFolderName(filePath));
         }
