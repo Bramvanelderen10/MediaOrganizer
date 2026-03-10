@@ -67,6 +67,14 @@ public class SubtitleMover
                 var videoStem = Path.GetFileNameWithoutExtension(targetVideo.DestinationPath);
                 var subFileName = Path.GetFileName(subFile);
 
+                // Strip accumulated copy suffixes like " (1) (1)" from previous cycles
+                var subNameWithoutExt = Path.GetFileNameWithoutExtension(subFileName);
+                var strippedSubName = PathHelpers.StripTrailingCopySuffixes(subNameWithoutExt);
+                if (subNameWithoutExt != strippedSubName)
+                {
+                    subFileName = strippedSubName + Path.GetExtension(subFileName);
+                }
+
                 // Prefix subtitle with the video name so files from different episodes
                 // don't collide (e.g. "Health Care S01E03.2_English.srt").
                 // Skip the prefix when the subtitle already contains the video's name.

@@ -324,6 +324,53 @@ public class MovePlanBuilderTests : IDisposable
     }
 
     [Fact]
+    public void BuildMovePlan_ShowEpisodeWithTrailingCopySuffix_StripsFromDestination()
+    {
+        // After a forget/re-organize cycle, the file at the destination has " (1)" baked in.
+        // The destination path must strip the trailing copy suffix so it doesn't accumulate.
+        var testFile = "/organized/Breaking Bad/Season 02/Breaking.Bad.S02E05 (1).mkv";
+        var rootFolder = "/organized";
+        var expectedDestination = "/organized/Breaking Bad/Season 02/Breaking.Bad.S02E05.mkv";
+
+        var season = new Season(2, new List<Episode> { new(testFile, 5) });
+        var mediaObject = new MediaObject
+        {
+            Name = "Breaking Bad",
+            Type = MediaType.Show,
+            Seasons = [season]
+        };
+
+        _sut.BuildMovePlan(new List<MediaObject> { mediaObject }, rootFolder);
+
+        using var assertContext = CreateAssertContext();
+        var entry = assertContext.MoveHistory.Single();
+        Assert.Equal(expectedDestination, entry.TargetFilePath);
+    }
+
+    [Fact]
+    public void BuildMovePlan_ShowEpisodeWithMultipleStackedSuffixes_StripsAllFromDestination()
+    {
+        // File has accumulated " (1) (1) (1)" from repeated forget cycles
+        var testFile = "/organized/Show/Season 01/[SubsPlease] Frieren S2 - 03 (1080p) [7556A22B] (1) (1) (1).mkv";
+        var rootFolder = "/organized";
+        var expectedDestination = "/organized/Show/Season 01/[SubsPlease] Frieren S2 - 03 (1080p) [7556A22B].mkv";
+
+        var season = new Season(1, new List<Episode> { new(testFile, 3) });
+        var mediaObject = new MediaObject
+        {
+            Name = "Show",
+            Type = MediaType.Show,
+            Seasons = [season]
+        };
+
+        _sut.BuildMovePlan(new List<MediaObject> { mediaObject }, rootFolder);
+
+        using var assertContext = CreateAssertContext();
+        var entry = assertContext.MoveHistory.Single();
+        Assert.Equal(expectedDestination, entry.TargetFilePath);
+    }
+
+    [Fact]
     public void BuildMovePlan_EmptyMediaObjectList_SavesChangesWithoutAddingRecords()
     {
         // Arrange

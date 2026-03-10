@@ -1,3 +1,4 @@
+using MediaOrganizer.Helpers;
 using MediaOrganizer.Parsing;
 using MediaOrganizer.History;
 
@@ -164,6 +165,9 @@ public class MovePlanBuilder
             {
                 var seasonFolder = Path.Combine(rootFolder, media.Name, $"Season {season.SeasonNumber:00}");
                 var fileName = Path.GetFileNameWithoutExtension(filePath);
+                // Strip trailing copy suffixes like " (1)" that may have accumulated
+                // from previous forget/re-organize cycles
+                fileName = PathHelpers.StripTrailingCopySuffixes(fileName);
                 return Path.Combine(seasonFolder, $"{fileName}{extension}");
             }
         }

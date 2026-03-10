@@ -31,6 +31,15 @@ public class VideoMover
                 continue;
             }
 
+            // Skip when source and destination are the same file (e.g. after forget/re-organize)
+            if (string.Equals(Path.GetFullPath(item.OriginalFilePath), Path.GetFullPath(item.TargetFilePath), StringComparison.OrdinalIgnoreCase))
+            {
+                _moveHistoryStore.UpdateIsMoved(item.Id, true);
+                _logger.LogInformation("File already at destination, marking as moved: '{Path}'", item.OriginalFilePath);
+                movedFiles.Add(new MovedFileInfo(item.OriginalFilePath, item.TargetFilePath));
+                continue;
+            }
+
             var destinationDirectory = Path.GetDirectoryName(item.TargetFilePath)!;
             _fileSystem.CreateDirectory(destinationDirectory);
 

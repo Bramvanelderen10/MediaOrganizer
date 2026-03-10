@@ -106,6 +106,22 @@ public class VideoMoverTests
         Assert.Empty(result);
     }
 
+    [Fact]
+    public void ExecuteMovePlan_SkipsMoveWhenSourceAndDestinationAreSamePath()
+    {
+        var entry = CreateEntry(1, "/dest/Show/Season 01/Episode.mkv", "/dest/Show/Season 01/Episode.mkv");
+        _fsMock.Setup(f => f.FileExists("/dest/Show/Season 01/Episode.mkv")).Returns(true);
+
+        var result = _sut.ExecuteMovePlan(new[] { entry });
+
+        Assert.Single(result);
+        Assert.Equal("/dest/Show/Season 01/Episode.mkv", result[0].OriginalPath);
+        Assert.Equal("/dest/Show/Season 01/Episode.mkv", result[0].DestinationPath);
+        // Should mark as moved without actually calling MoveFile
+        _historyStoreMock.Verify(h => h.UpdateIsMoved(1, true), Times.Once);
+        _fsMock.Verify(f => f.MoveFile(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
     // ────────────── Helpers ──────────────
 
     private static MoveHistoryEntry CreateEntry(long id, string original, string target)
