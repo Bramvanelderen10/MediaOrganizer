@@ -3,6 +3,7 @@ import 'dart:async';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'setup_screen.dart';
+import 'widgets/log_stream_container.dart';
 
 enum _AppMenuAction {
   forgetShowSeason,
@@ -201,113 +202,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _isLogConnecting = false;
     _isLogConnected = false;
-  }
-
-  Widget _buildLogPanel(BuildContext context) {
-    final canToggle = _isApiHealthy && !_isLogConnecting;
-    final statusText = _isLogConnecting
-        ? 'Connecting…'
-        : _isLogConnected
-            ? 'Connected'
-            : 'Disconnected';
-
-    return Card(
-      elevation: 0,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'Live logs',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  statusText,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: _isLogConnected
-                            ? Colors.green
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                ),
-                const Spacer(),
-                if (_isLogConnecting)
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                IconButton(
-                  tooltip: _isLogConnected ? 'Disconnect logs' : 'Connect logs',
-                  onPressed: canToggle
-                      ? () {
-                          if (_isLogConnected) {
-                            _disconnectLogs();
-                          } else {
-                            unawaited(_connectLogs());
-                          }
-                        }
-                      : null,
-                  icon: Icon(
-                    _isLogConnected
-                        ? Icons.stop_circle_outlined
-                        : Icons.play_circle_outline,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              height: 240,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: _logLines.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No logs yet…',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                        ),
-                      ),
-                    )
-                  : Scrollbar(
-                      child: ListView.builder(
-                        controller: _logScrollController,
-                        itemCount: _logLines.length,
-                        itemBuilder: (ctx, i) => Text(
-                          _logLines[i],
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontFamily: 'monospace',
-                            fontSize: 12,
-                            height: 1.25,
-                          ),
-                        ),
-                      ),
-                    ),
-            ),
-            if (_logError != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _logError!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
   }
 
   Future<void> _triggerOrganize() async {
@@ -585,7 +479,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ],
                   const SizedBox(height: 16),
-                  _buildLogPanel(context),
+                  LogStreamContainer(
+                    isApiHealthy: _isApiHealthy,
+                    isLogConnecting: _isLogConnecting,
+                    isLogConnected: _isLogConnected,
+                    logLines: _logLines,
+                    logError: _logError,
+                    scrollController: _logScrollController,
+                    onConnect: () {
+                      unawaited(_connectLogs());
+                    },
+                    onDisconnect: _disconnectLogs,
+                  ),
                 ],
               ),
             ),
