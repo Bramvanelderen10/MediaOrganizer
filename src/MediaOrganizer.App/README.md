@@ -1,17 +1,46 @@
-# media_organizer_app
+# MediaOrganizer App
 
-A new Flutter project.
+Flutter companion app for the MediaOrganizer API.
 
-## Getting Started
+It lets you:
+- Configure and persist the API URL
+- Check API health continuously
+- Trigger an organize run
+- Forget move history for a specific show season
+- View live server logs through SSE (`/logs/stream`)
 
-This project is a starting point for a Flutter application.
+## Requirements
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK (stable)
+- Dart SDK compatible with this project (`^3.7.0`)
+- A running MediaOrganizer backend
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Run locally
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+From [src/MediaOrganizer.App](src/MediaOrganizer.App):
+
+1. Install dependencies
+	- `flutter pub get`
+2. Run the app
+	- `flutter run`
+
+## First-time setup
+
+On first launch, enter your MediaOrganizer API address, for example:
+- `192.168.50.200:45263`
+- `http://192.168.50.200:45263`
+
+The app stores this value in local preferences. You can clear it via **Reset API URL** in the top-right menu.
+
+## Backend endpoints used
+
+- `GET /health`
+- `POST /trigger-job`
+- `POST /forget-show-season`
+- `GET /logs/stream?tail=...`
+
+## Notes
+
+- If no scheme is provided, the app assumes `http://`.
+- The app polls health every second while active.
+- Log streaming reconnect attempts are throttled to avoid rapid retries.
