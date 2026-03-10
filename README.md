@@ -1,6 +1,6 @@
 # MediaOrganizer
 
-MediaOrganizer is a .NET 10 worker service + minimal API that organizes messy video folders into a clean movie/TV library layout.
+MediaOrganizer is a .NET 10 worker service + minimal API that organizes messy video folders into a clean movie/TV library layout which is supported by Jellyfin.
 
 It supports scheduled runs (cron), manual API triggers, subtitle companion moves, source cleanup, and full restore using a SQLite move-history database.
 
