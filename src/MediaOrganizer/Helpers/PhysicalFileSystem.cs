@@ -19,10 +19,10 @@ public class PhysicalFileSystem : IFileSystem
     public void DeleteDirectory(string path, bool recursive) => Directory.Delete(path, recursive);
 
     public IEnumerable<string> EnumerateFiles(string path, string searchPattern, SearchOption searchOption)
-        => Directory.EnumerateFiles(path, searchPattern, searchOption);
+        => Directory.GetFiles(path, searchPattern, searchOption);
 
     public IEnumerable<string> EnumerateDirectories(string path)
-        => Directory.EnumerateDirectories(path);
+        => Directory.GetDirectories(path);
 
     public string[] GetFiles(string path) => Directory.GetFiles(path);
 
