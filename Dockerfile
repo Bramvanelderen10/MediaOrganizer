@@ -17,8 +17,17 @@ WORKDIR /app
 ENV TZ=Europe/Amsterdam
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
+# Install gosu for privilege de-escalation so that moved files are owned by
+# the host user (PUID/PGID) rather than root, preventing SMB lock-out.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gosu \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 45263
 
-ENTRYPOINT ["dotnet", "MediaOrganizer.dll"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["dotnet", "MediaOrganizer.dll"]
