@@ -40,6 +40,12 @@ services:
       - MediaOrganizer__SourceFolder=/media/source
       - MediaOrganizer__DestinationFolder=/media/destination
       - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
+      # Match PUID/PGID to the host user that owns your media files.
+      # This prevents moved files from being owned by root and becoming
+      # inaccessible (locked) when accessed over SMB from other devices.
+      # Run `id` on your host to find the right values.
+      - PUID=1000
+      - PGID=1000
     restart: unless-stopped
     volumes:
       - /path/to/your/videos:/media
@@ -135,6 +141,15 @@ Settings are under `MediaOrganizer` in `appsettings.json` or environment variabl
 | `VideoExtensions` | `.mp4,.mkv,.avi,.mov,.wmv,.m4v,.webm,.ts,.mpg,.mpeg` | Allowed video extensions |
 | `SubtitleExtensions` | `.srt,.sub,.ass,.ssa,.vtt,.idx` | Allowed subtitle extensions |
 
+**Docker-only environment variables** (not part of `MediaOrganizer` config section):
+
+| Variable | Default | Description |
+|---|---|---|
+| `PUID` | `1000` | User ID the service runs as inside the container |
+| `PGID` | `1000` | Group ID the service runs as inside the container |
+
+Set `PUID`/`PGID` to the UID/GID of the host user that owns your media files (run `id` on your host to find the values). This ensures all moved files keep the correct ownership so they are not locked when accessed over SMB.
+
 Example:
 
 ```json
@@ -196,3 +211,4 @@ src/
 | Files skipped | Source path exists and extension lists are correct |
 | Duplicate names | Expected behavior; unique suffix is applied |
 | Restore did not move file | Target missing or original path already occupied |
+| Moved files locked / can't delete via SMB | Container is running as root; set `PUID`/`PGID` env vars to match the host user that owns your media files (run `id` on the host) |

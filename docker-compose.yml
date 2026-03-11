@@ -9,6 +9,11 @@ services:
       - TZ=Europe/Amsterdam
       - MediaOrganizer__SourceFolder=/media
       - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
+      # Match these to the UID/GID of the host user that owns your media files.
+      # This ensures moved files are not owned by root, preventing SMB lock-out.
+      # Run `id` on your host to find the right values.
+      - PUID=1000
+      - PGID=1000
     restart: unless-stopped
     volumes:
       # Keeping both under one mount ensures moves are fast renames (same filesystem).
