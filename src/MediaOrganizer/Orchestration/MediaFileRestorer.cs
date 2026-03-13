@@ -7,12 +7,12 @@ public class MediaFileRestorer
 {
     private readonly ILogger<MediaFileRestorer> _logger;
     private readonly IFileSystem _fileSystem;
-    private readonly MoveHistoryStore _moveHistoryStore;
+    private readonly SettingStore _moveHistoryStore;
 
     public MediaFileRestorer(
         ILogger<MediaFileRestorer> logger,
         IFileSystem fileSystem,
-        MoveHistoryStore moveHistoryStore)
+        SettingStore moveHistoryStore)
     {
         _logger = logger;
         _fileSystem = fileSystem;

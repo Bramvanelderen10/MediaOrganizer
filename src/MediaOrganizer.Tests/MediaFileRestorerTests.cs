@@ -17,7 +17,7 @@ public class MediaFileRestorerTests : IDisposable
     private readonly Mock<IFileSystem> _fsMock = new();
     private readonly DbContextOptions<MoveHistoryDbContext> _dbOptions;
     private readonly Mock<IDbContextFactory<MoveHistoryDbContext>> _contextFactoryMock;
-    private readonly MoveHistoryStore _moveHistoryStore;
+    private readonly SettingStore _moveHistoryStore;
     private readonly MediaFileRestorer _sut;
 
     public MediaFileRestorerTests()
@@ -31,7 +31,7 @@ public class MediaFileRestorerTests : IDisposable
             .Returns(() => new MoveHistoryDbContext(_dbOptions));
 
         _moveHistoryStore = new MoveHistoryStore(
-            Mock.Of<ILogger<MoveHistoryStore>>(),
+            Mock.Of<ILogger<SettingStore>>(),
             _contextFactoryMock.Object);
 
         _sut = new MediaFileRestorer(_loggerMock.Object, _fsMock.Object, _moveHistoryStore);

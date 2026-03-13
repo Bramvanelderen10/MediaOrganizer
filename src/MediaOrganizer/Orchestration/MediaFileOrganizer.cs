@@ -19,7 +19,7 @@ public class MediaFileOrganizer
     private readonly MediaOrganizerOptions _options;
     private readonly IFileSystem _fileSystem;
     private readonly VideoFileFinder _videoFileFinder;
-    private readonly MoveHistoryStore _moveHistoryStore;
+    private readonly SettingStore _moveHistoryStore;
     private readonly MediaGrouper _mediaGrouper;
     private readonly MovePlanBuilder _movePlanBuilder;
     private readonly VideoMover _moveExecutor;
@@ -31,7 +31,7 @@ public class MediaFileOrganizer
         IOptions<MediaOrganizerOptions> options,
         IFileSystem fileSystem,
         VideoFileFinder videoFileFinder,
-        MoveHistoryStore moveHistoryStore,
+        SettingStore moveHistoryStore,
         MediaGrouper mediaGrouper,
         MovePlanBuilder movePlanBuilder,
         VideoMover moveExecutor,

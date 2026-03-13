@@ -14,7 +14,7 @@ public class VideoMoverTests
 {
     private readonly Mock<ILogger<VideoMover>> _loggerMock = new();
     private readonly Mock<IFileSystem> _fsMock = new();
-    private readonly Mock<MoveHistoryStore> _historyStoreMock;
+    private readonly Mock<SettingStore> _historyStoreMock;
     private readonly VideoMover _sut;
 
     public VideoMoverTests()
@@ -134,13 +134,13 @@ public class VideoMoverTests
             IsMoved = false,
         };
 
-    private static Mock<MoveHistoryStore> CreateMoveHistoryStoreMock()
+    private static Mock<SettingStore> CreateMoveHistoryStoreMock()
     {
         // MoveHistoryStore has dependencies on ILogger and IDbContextFactory.
         // We create a mock that doesn't call the real constructor.
-        var mock = new Mock<MoveHistoryStore>(
+        var mock = new Mock<SettingStore>(
             MockBehavior.Loose,
-            Mock.Of<ILogger<MoveHistoryStore>>(),
+            Mock.Of<ILogger<SettingStore>>(),
             (Microsoft.EntityFrameworkCore.IDbContextFactory<MoveHistoryDbContext>)null!);
 
         mock.CallBase = false;

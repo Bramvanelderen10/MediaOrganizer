@@ -4,13 +4,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MediaOrganizer.History;
 
-public class MoveHistoryStore
+public class SettingStore
 {
-    private readonly ILogger<MoveHistoryStore> _logger;
+    private readonly ILogger<SettingStore> _logger;
     private readonly IDbContextFactory<MoveHistoryDbContext> _contextFactory;
 
-    public MoveHistoryStore(
-        ILogger<MoveHistoryStore> logger,
+    public SettingStore(
+        ILogger<SettingStore> logger,
         IDbContextFactory<MoveHistoryDbContext> contextFactory)
     {
         _logger = logger;

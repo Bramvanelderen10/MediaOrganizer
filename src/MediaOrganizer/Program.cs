@@ -34,12 +34,12 @@ builder.Services.AddSingleton<VideoMover>();
 builder.Services.AddSingleton<SubtitleMover>();
 builder.Services.AddSingleton<DirectoryCleaner>();
 
-var dbPath = MoveHistoryStore.ResolveDatabasePath(
+var dbPath = SettingStore.ResolveDatabasePath(
     builder.Configuration.GetValue<string>("MediaOrganizer:MoveHistoryDatabasePath") ?? "");
 builder.Services.AddDbContextFactory<MoveHistoryDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 
-builder.Services.AddSingleton<MoveHistoryStore>();
+builder.Services.AddSingleton<SettingStore>();
 builder.Services.AddSingleton<MediaFileOrganizer>();
 builder.Services.AddSingleton<MediaFileRestorer>();
 
@@ -86,7 +86,7 @@ app.MapPost("/restore-folder-structure", async (MediaFileRestorer mediaFileResto
 .WithSummary("Restores all tracked file moves back to their original structure")
 .WithDescription("Reverts all files tracked in the move-history database that have not yet been restored.");
 
-app.MapPost("/forget-show-season", (MoveHistoryStore moveHistoryStore, ForgetShowSeasonRequest request) =>
+app.MapPost("/forget-show-season", (SettingStore moveHistoryStore, ForgetShowSeasonRequest request) =>
 {
     if (string.IsNullOrWhiteSpace(request.ShowName))
     {
