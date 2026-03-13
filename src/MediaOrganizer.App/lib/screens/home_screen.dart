@@ -3,11 +3,9 @@ import 'dart:async';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'setup_screen.dart';
-import 'storage_screen.dart';
 import 'widgets/log_stream_container.dart';
 
 enum _AppMenuAction {
-  storage,
   forgetShowSeason,
   resetApiUrl,
 }
@@ -30,6 +28,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _isApiHealthy = false;
   bool _isCheckingHealth = false;
   String? _apiUnavailableMessage;
+
+  int _storageTotalBytes = 0;
+  int _storageUsedBytes = 0;
+  int _storageFreeBytes = 0;
+  bool _hasStorageData = false;
+  bool _hasAttemptedStorageFetch = false;
 
   StreamSubscription<String>? _logSubscription;
   final List<String> _logLines = <String>[];
@@ -112,6 +116,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Auto-connect logs while the API is reachable.
       if (reachable) {
         unawaited(_maybeAutoConnectLogs());
+        if (!_hasAttemptedStorageFetch) {
+          _hasAttemptedStorageFetch = true;
+          unawaited(_fetchStorageInfo());
+        }
       } else {
         _disconnectLogs();
       }
@@ -129,6 +137,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     _nextLogConnectAttemptAt = now.add(const Duration(seconds: 5));
     await _connectLogs();
+  }
+
+  Future<void> _fetchStorageInfo() async {
+    try {
+      final data = await _api.getStorageInfo();
+      if (!mounted) return;
+      setState(() {
+        _storageTotalBytes = (data['totalBytes'] as num?)?.toInt() ?? 0;
+        _storageUsedBytes = (data['usedBytes'] as num?)?.toInt() ?? 0;
+        _storageFreeBytes = (data['freeBytes'] as num?)?.toInt() ?? 0;
+        _hasStorageData = true;
+      });
+    } catch (_) {
+      // Storage indicator is non-critical; silently ignore errors.
+    }
+  }
+
+  String _buildStorageStatusText(double usedFraction) {
+    return '${_formatBytes(_storageFreeBytes)} free · ${(usedFraction * 100).toStringAsFixed(1)}% used';
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    int unitIndex = 0;
+    double size = bytes.toDouble();
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    return '${size.toStringAsFixed(2)} ${units[unitIndex]}';
   }
 
   Future<void> _connectLogs() async {
@@ -399,13 +438,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             tooltip: 'Menu',
             onSelected: (action) {
               switch (action) {
-                case _AppMenuAction.storage:
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => StorageScreen(api: _api),
-                    ),
-                  );
-                  break;
                 case _AppMenuAction.forgetShowSeason:
                   unawaited(_showForgetSeasonDialog());
                   break;
@@ -415,10 +447,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               }
             },
             itemBuilder: (context) => const [
-              PopupMenuItem<_AppMenuAction>(
-                value: _AppMenuAction.storage,
-                child: Text('Storage'),
-              ),
               PopupMenuItem<_AppMenuAction>(
                 value: _AppMenuAction.forgetShowSeason,
                 child: Text('Forget show season'),
@@ -492,6 +520,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
                   ],
                   const SizedBox(height: 16),
+                  if (_hasStorageData) ...[
+                    _buildStorageIndicator(context),
+                    const SizedBox(height: 16),
+                  ],
                   LogStreamContainer(
                     isApiHealthy: _isApiHealthy,
                     isLogConnecting: _isLogConnecting,
@@ -508,6 +540,58 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStorageIndicator(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final usedFraction =
+        _storageTotalBytes > 0 ? _storageUsedBytes / _storageTotalBytes : 0.0;
+    final barColor = usedFraction > 0.9
+        ? colorScheme.error
+        : usedFraction > 0.75
+            ? Colors.orange
+            : colorScheme.primary;
+
+    return Card(
+      elevation: 0,
+      color: colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(
+              Icons.storage_rounded,
+              size: 20,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: usedFraction.clamp(0.0, 1.0),
+                      minHeight: 8,
+                      backgroundColor: colorScheme.surfaceContainerHigh,
+                      color: barColor,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _buildStorageStatusText(usedFraction),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
