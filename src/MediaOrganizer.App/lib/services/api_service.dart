@@ -58,6 +58,16 @@ class ApiService {
     }
   }
 
+  /// Fetches storage information via GET /storage-info.
+  /// Returns a map with keys: folder, totalBytes, freeBytes, usedBytes.
+  Future<Map<String, dynamic>> getStorageInfo() async {
+    final response = await http.get(_uri('/storage-info'));
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
+
   /// Streams live log lines from GET /logs/stream (Server-Sent Events).
   Stream<String> streamLogs({int tail = 200}) {
     final clampedTail = tail.clamp(0, 1000);

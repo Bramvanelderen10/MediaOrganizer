@@ -127,6 +127,33 @@ app.MapGet("/health", () => Results.Ok(new
 .WithName("Health")
 .WithSummary("Returns service health");
 
+app.MapGet("/storage-info", (Microsoft.Extensions.Options.IOptions<MediaOrganizerOptions> options) =>
+{
+    var opts = options.Value;
+    var folder = opts.DestinationFolder ?? opts.SourceFolder;
+
+    if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+    {
+        return Results.BadRequest(new
+        {
+            message = "No valid destination/source folder configured or folder does not exist."
+        });
+    }
+
+    var driveInfo = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(folder))!);
+
+    return Results.Ok(new
+    {
+        folder,
+        totalBytes = driveInfo.TotalSize,
+        freeBytes = driveInfo.AvailableFreeSpace,
+        usedBytes = driveInfo.TotalSize - driveInfo.AvailableFreeSpace
+    });
+})
+.WithName("StorageInfo")
+.WithSummary("Returns disk storage information for the media destination folder")
+.WithDescription("Reports total, used, and free bytes for the drive containing the configured destination (or source) folder.");
+
 app.MapGet("/logs/stream", async (HttpContext context, LogBroadcaster broadcaster, int? tail) =>
 {
     context.Response.Headers.CacheControl = "no-cache";
@@ -183,6 +210,7 @@ app.MapGet("/", () => Results.Ok(new
         triggerJob = "POST /trigger-job",
         restoreFolderStructure = "POST /restore-folder-structure",
         forgetShowSeason = "POST /forget-show-season",
+        storageInfo = "GET /storage-info",
         health = "GET /health",
         streamLogs = "GET /logs/stream",
         openApiSpec = "GET /openapi/v1.json",

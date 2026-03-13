@@ -3,9 +3,11 @@ import 'dart:async';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import 'setup_screen.dart';
+import 'storage_screen.dart';
 import 'widgets/log_stream_container.dart';
 
 enum _AppMenuAction {
+  storage,
   forgetShowSeason,
   resetApiUrl,
 }
@@ -397,6 +399,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             tooltip: 'Menu',
             onSelected: (action) {
               switch (action) {
+                case _AppMenuAction.storage:
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => StorageScreen(api: _api),
+                    ),
+                  );
+                  break;
                 case _AppMenuAction.forgetShowSeason:
                   unawaited(_showForgetSeasonDialog());
                   break;
@@ -406,6 +415,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem<_AppMenuAction>(
+                value: _AppMenuAction.storage,
+                child: Text('Storage'),
+              ),
               PopupMenuItem<_AppMenuAction>(
                 value: _AppMenuAction.forgetShowSeason,
                 child: Text('Forget show season'),

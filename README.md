@@ -73,6 +73,7 @@ curl http://localhost:45263/health
 |---|---|---|
 | GET | `/` | API overview |
 | GET | `/health` | Health check |
+| GET | `/storage-info` | Disk storage info for the destination folder |
 | POST | `/trigger-job` | Trigger organize job immediately |
 | POST | `/restore-folder-structure` | Restore tracked moved files |
 | GET | `/openapi/v1.json` | OpenAPI spec |
@@ -96,6 +97,12 @@ Restore:
 
 ```bash
 curl -X POST http://localhost:45263/restore-folder-structure
+```
+
+Storage info:
+
+```bash
+curl http://localhost:45263/storage-info
 ```
 
 ## Organize behavior (summary)
