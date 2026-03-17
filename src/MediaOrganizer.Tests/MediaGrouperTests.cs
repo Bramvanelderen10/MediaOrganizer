@@ -206,6 +206,22 @@ public class MediaGrouperTests
         Assert.Equal(MediaType.Show, show.Type);
     }
 
+    [Fact]
+    public void GroupMediaFiles_VersionTagStripped_FilesGrouped()
+    {
+        var files = new List<string>
+        {
+            "/dl/[EMBER] Gachiakuta - 01 V3.mkv",
+            "/dl/[EMBER] Gachiakuta - 21.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
+    }
+
     // ───────────────────── Similarity / fuzzy matching ─────────────────────
 
     [Fact]
