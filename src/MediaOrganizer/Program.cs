@@ -23,7 +23,6 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 // Add background service
-builder.Services.AddHostedService<ScheduledJobService>();
 builder.Services.AddSingleton<JobExecutor>();
 builder.Services.Configure<MediaOrganizerOptions>(builder.Configuration.GetSection("MediaOrganizer"));
 builder.Services.AddSingleton<IFileSystem, PhysicalFileSystem>();
@@ -41,7 +40,6 @@ builder.Services.AddDbContextFactory<MoveHistoryDbContext>(options =>
 
 builder.Services.AddSingleton<MoveHistoryStore>();
 builder.Services.AddSingleton<MediaFileOrganizer>();
-builder.Services.AddSingleton<MediaFileRestorer>();
 
 // Live log streaming (SSE)
 builder.Services.AddSingleton<LogBroadcaster>();
@@ -72,20 +70,6 @@ app.MapPost("/trigger-job", async (JobExecutor jobExecutor, TriggerJobRequest? r
 .WithSummary("Triggers the media organization job immediately")
 .WithDescription("Optionally accepts a custom folder path. If omitted, configured defaults are used.");
 
-app.MapPost("/restore-folder-structure", async (MediaFileRestorer mediaFileRestorer) =>
-{
-    var summary = await mediaFileRestorer.RestoreAllAsync();
-    return Results.Ok(new
-    {
-        message = "Restore completed",
-        executedAt = DateTime.Now,
-        result = summary
-    });
-})
-.WithName("RestoreFolderStructure")
-.WithSummary("Restores all tracked file moves back to their original structure")
-.WithDescription("Reverts all files tracked in the move-history database that have not yet been restored.");
-
 app.MapPost("/forget-show-season", (MoveHistoryStore moveHistoryStore, ForgetShowSeasonRequest request) =>
 {
     if (string.IsNullOrWhiteSpace(request.ShowName))
@@ -112,7 +96,7 @@ app.MapPost("/forget-show-season", (MoveHistoryStore moveHistoryStore, ForgetSho
         executedAt = DateTime.Now,
         showName = request.ShowName,
         seasonNumber = request.SeasonNumber,
-        deletedCount = deletedCount
+        deletedCount
     });
 })
 .WithName("ForgetShowSeason")
@@ -208,11 +192,10 @@ app.MapGet("/logs/stream", async (HttpContext context, LogBroadcaster broadcaste
 
 app.MapGet("/", () => Results.Ok(new
 {
-    message = "Scheduled Job Application",
+    message = "Media Organizer API",
     endpoints = new
     {
         triggerJob = "POST /trigger-job",
-        restoreFolderStructure = "POST /restore-folder-structure",
         forgetShowSeason = "POST /forget-show-season",
         storageInfo = "GET /storage-info",
         health = "GET /health",
