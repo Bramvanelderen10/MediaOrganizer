@@ -351,14 +351,14 @@ public class MovePlanBuilderTests : IDisposable
     public void BuildMovePlan_ShowEpisodeWithMultipleStackedSuffixes_StripsAllFromDestination()
     {
         // File has accumulated " (1) (1) (1)" from repeated forget cycles
-        var testFile = "/organized/Show/Season 01/[SubsPlease] Frieren S2 - 03 (1080p) [7556A22B] (1) (1) (1).mkv";
+        var testFile = "/organized/Frieren/Season 01/[SubsPlease] Frieren S2 - 03 (1080p) [7556A22B] (1) (1) (1).mkv";
         var rootFolder = "/organized";
-        var expectedDestination = "/organized/Show/Season 01/[SubsPlease] Frieren S2 - 03 (1080p) [7556A22B].mkv";
+        var expectedDestination = "/organized/Frieren/Season 01/[SubsPlease] Frieren S2 - 03 (1080p) [7556A22B].mkv";
 
         var season = new Season(1, new List<Episode> { new(testFile, 3) });
         var mediaObject = new MediaObject
         {
-            Name = "Show",
+            Name = "Frieren",
             Type = MediaType.Show,
             Seasons = [season]
         };
@@ -421,5 +421,53 @@ public class MovePlanBuilderTests : IDisposable
         // Assert
         using var assertContext = CreateAssertContext();
         Assert.Equal(3, assertContext.MoveHistory.Count());
+    }
+
+    // ───────────────────── Show name reconstruction in filename ─────────────────────
+
+    [Fact]
+    public void BuildMovePlan_ShowFilenameMissingShowName_ReconstructsWithShowNameAndSxxExx()
+    {
+        // File doesn't contain the show name — should be reconstructed
+        var testFile = "/media/ThatTimeIGotReincarnatedAsASlime/S02E06-The Beauty Makes Her Move [5F8B3E3E].mkv";
+        var rootFolder = "/organized";
+        var expectedDestination = "/organized/ThatTimeIGotReincarnatedAsASlime/Season 02/ThatTimeIGotReincarnatedAsASlime S02E06.mkv";
+
+        var season = new Season(2, new List<Episode> { new(testFile, 6) });
+        var mediaObject = new MediaObject
+        {
+            Name = "ThatTimeIGotReincarnatedAsASlime",
+            Type = MediaType.Show,
+            Seasons = [season]
+        };
+
+        _sut.BuildMovePlan(new List<MediaObject> { mediaObject }, rootFolder);
+
+        using var assertContext = CreateAssertContext();
+        var entry = assertContext.MoveHistory.Single();
+        Assert.Equal(expectedDestination, entry.TargetFilePath);
+    }
+
+    [Fact]
+    public void BuildMovePlan_ShowFilenameAlreadyContainsShowName_PreservesOriginalFilename()
+    {
+        // File already contains the show name — should keep original filename
+        var testFile = "/media/Breaking.Bad.S02E05.mkv";
+        var rootFolder = "/organized";
+        var expectedDestination = "/organized/Breaking Bad/Season 02/Breaking.Bad.S02E05.mkv";
+
+        var season = new Season(2, new List<Episode> { new(testFile, 5) });
+        var mediaObject = new MediaObject
+        {
+            Name = "Breaking Bad",
+            Type = MediaType.Show,
+            Seasons = [season]
+        };
+
+        _sut.BuildMovePlan(new List<MediaObject> { mediaObject }, rootFolder);
+
+        using var assertContext = CreateAssertContext();
+        var entry = assertContext.MoveHistory.Single();
+        Assert.Equal(expectedDestination, entry.TargetFilePath);
     }
 }

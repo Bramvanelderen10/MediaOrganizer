@@ -1,8 +1,8 @@
 # MediaOrganizer
 
-MediaOrganizer is a .NET 10 worker service + minimal API that organizes messy video folders into a clean movie/TV library layout.
+MediaOrganizer is a .NET 10 minimal API service that organizes messy video folders into a clean movie/TV library layout which is supported by Jellyfin.
 
-It supports scheduled runs (cron), manual API triggers, subtitle companion moves, source cleanup, and full restore using a SQLite move-history database.
+It supports on-demand API triggers, subtitle companion moves, source cleanup, and idempotent move tracking using a SQLite move-history database.
 
 ## What this repository contains
 
@@ -12,13 +12,11 @@ It supports scheduled runs (cron), manual API triggers, subtitle companion moves
 
 ## Features
 
-- Scheduled organization via cron (`NCrontab`)
-- On-demand trigger and restore endpoints
+- On-demand trigger endpoint
 - Movie + TV + anime-style filename handling
 - Title grouping via Levenshtein similarity (`>= 0.80`)
 - Subtitle relocation next to moved video files
 - Idempotent planning with SQLite move history
-- Restore moved files back to original paths
 - Cleanup of empty/leftover source directories
 - OpenAPI document + Scalar docs UI
 - Docker-ready deployment
@@ -40,6 +38,12 @@ services:
       - MediaOrganizer__SourceFolder=/media/source
       - MediaOrganizer__DestinationFolder=/media/destination
       - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
+      # Match PUID/PGID to the host user that owns your media files.
+      # This prevents moved files from being owned by root and becoming
+      # inaccessible (locked) when accessed over SMB from other devices.
+      # Run `id` on your host to find the right values.
+      - PUID=1000
+      - PGID=1000
     restart: unless-stopped
     volumes:
       - /path/to/your/videos:/media
@@ -67,8 +71,9 @@ curl http://localhost:45263/health
 |---|---|---|
 | GET | `/` | API overview |
 | GET | `/health` | Health check |
+| GET | `/storage-info` | Disk storage info for the destination folder |
 | POST | `/trigger-job` | Trigger organize job immediately |
-| POST | `/restore-folder-structure` | Restore tracked moved files |
+| POST | `/forget-show-season` | Delete move history for a show/season |
 | GET | `/openapi/v1.json` | OpenAPI spec |
 | GET | `/scalar/v1` | Scalar API UI |
 
@@ -86,10 +91,10 @@ curl -X POST http://localhost:45263/trigger-job \
   -d '{"folderPath":"/media/incoming"}'
 ```
 
-Restore:
+Storage info:
 
 ```bash
-curl -X POST http://localhost:45263/restore-folder-structure
+curl http://localhost:45263/storage-info
 ```
 
 ## Organize behavior (summary)
@@ -131,9 +136,17 @@ Settings are under `MediaOrganizer` in `appsettings.json` or environment variabl
 | `SourceFolder` | `null` | Source root to scan |
 | `DestinationFolder` | `null` (falls back to source) | Organized output root |
 | `MoveHistoryDatabasePath` | `data/move-history.db` | SQLite history DB path |
-| `CronSchedule` | `0 5 * * *` | Cron schedule |
 | `VideoExtensions` | `.mp4,.mkv,.avi,.mov,.wmv,.m4v,.webm,.ts,.mpg,.mpeg` | Allowed video extensions |
 | `SubtitleExtensions` | `.srt,.sub,.ass,.ssa,.vtt,.idx` | Allowed subtitle extensions |
+
+**Docker-only environment variables** (not part of `MediaOrganizer` config section):
+
+| Variable | Default | Description |
+|---|---|---|
+| `PUID` | `1000` | User ID the service runs as inside the container |
+| `PGID` | `1000` | Group ID the service runs as inside the container |
+
+Set `PUID`/`PGID` to the UID/GID of the host user that owns your media files (run `id` on your host to find the values). This ensures all moved files keep the correct ownership so they are not locked when accessed over SMB.
 
 Example:
 
@@ -143,18 +156,11 @@ Example:
     "SourceFolder": "/media/source",
     "DestinationFolder": "/media/destination",
     "MoveHistoryDatabasePath": "/data/move-history.db",
-    "CronSchedule": "0 5 * * *",
     "VideoExtensions": [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg"],
     "SubtitleExtensions": [".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"]
   }
 }
 ```
-
-Cron examples:
-
-- `0 5 * * *` daily at 05:00
-- `0 */6 * * *` every 6 hours
-- `0 9 * * 1-5` weekdays at 09:00
 
 ## Development
 
@@ -192,7 +198,6 @@ src/
 | Problem | Check |
 |---|---|
 | Service not reachable | Port mapping/firewall for `45263` |
-| Schedule not firing | Host/container time + `TZ` + cron expression |
 | Files skipped | Source path exists and extension lists are correct |
 | Duplicate names | Expected behavior; unique suffix is applied |
-| Restore did not move file | Target missing or original path already occupied |
+| Moved files locked / can't delete via SMB | Container is running as root; set `PUID`/`PGID` env vars to match the host user that owns your media files (run `id` on the host) |

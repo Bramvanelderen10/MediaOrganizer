@@ -80,11 +80,15 @@ All services are registered as **singletons** via DI. Key components:
 - Replace `.`, `_`, `-` with spaces; collapse whitespace.
 
 ### Episode Detection (in priority order)
-1. **SxxExx regex** — if matched, extract season + episode, title = text before the match.
+1. **SxxExx regex** — if matched, extract season + episode, title = text before the match. If title is empty, fall back to parent folder name.
 2. **Trailing episode number** (`\s+(?<episode>\d{1,4})\s*$`) — episode number from end, title = text before it.
 3. **No match** — no episode info, title = full cleaned name.
 
-Parent folder name is also parsed as a fallback source for the pattern.
+Parent folder name is also parsed as a fallback source for the pattern. If the immediate parent is a `Season XX` folder, the grandparent folder name is used instead.
+
+### Pre-grouping: Folder-based Title Override
+- For files sharing a parent folder + season (≥2 files): if no title is similar (≥0.80) to ≥50% of the group, all titles are overridden with the parent folder name.
+- Handles filenames with episode descriptions instead of show names (e.g. `ShowName/Episode One S01E01.mkv`).
 
 ### Grouping
 - Pairwise Levenshtein distance similarity with threshold **≥ 0.80** (80%).
@@ -109,8 +113,10 @@ Parent folder name is also parsed as a fallback source for the pattern.
 - Example: `Interstellar.2014.mp4` → `{root}/Interstellar 2014/Interstellar 2014.mp4`
 
 ### TV Show
-- Path: `{root}/{Name}/Season {NN}/{originalFileName}.ext`
-- Example: `The.Office.S02E03.Health.Care.mkv` → `{root}/The Office/Season 02/The.Office.S02E03.Health.Care.mkv`
+- If original filename contains the show name: `{root}/{Name}/Season {NN}/{originalFileName}.ext`
+- If show name is missing from filename: `{root}/{Name}/Season {NN}/{Name} S{NN}E{EE}.ext`
+- Example (name present): `The.Office.S02E03.Health.Care.mkv` → `{root}/The Office/Season 02/The.Office.S02E03.Health.Care.mkv`
+- Example (name missing): `S02E06-The Beauty Makes Her Move.mkv` (show: ThatTimeIGotReincarnatedAsASlime) → `{root}/ThatTimeIGotReincarnatedAsASlime/Season 02/ThatTimeIGotReincarnatedAsASlime S02E06.mkv`
 
 ### Anime-style (trailing episode number, no SxxExx)
 - Input examples:

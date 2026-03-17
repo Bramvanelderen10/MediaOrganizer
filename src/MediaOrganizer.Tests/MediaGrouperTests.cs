@@ -24,13 +24,16 @@ public class MediaGrouperTests
             "/media/Dark Matter 1080p x265 ELiTE[EZTVx to] S01E07.mkv",
             "/media/Dark Matter/Dark Matter 1080p x265 ELiTE[EZTVx to] S01E08.mkv",
             "/media/Dark Matter/Season 01/Dark Matter S01E06.mkv",
+            "/media/That Time I Got Reincarnated as a Slime S01-S02+OVA+SP & Slime Diaries 1080p Dual Audio BDRip 10 bits DD x265-EMBER/01. Season 1 + Special/SE01E01-The Beauty Makes Her Move [5F8B3E3E].mkv",
+            "/media/That Time I Got Reincarnated as a Slime S01-S02+OVA+SP & Slime Diaries 1080p Dual Audio BDRip 10 bits DD x265-EMBER/01. Season 2 + Special/SE02E01-The Beauty Makes Her Move [5F8B3E3E].mkv",
+            "/media/That Time I Got Reincarnated as a Slime SE02E02.mkv",
         };
 
         // Act
         var result = _sut.GroupMediaFiles(files);
 
-        // Assert — 3 groups: Jujutsu Kaisen show, Taxi Driver movie, Dark Matter show
-        Assert.Equal(3, result.Count);
+        // Assert — 4 groups: Jujutsu Kaisen show, Taxi Driver movie, Dark Matter show, That Time I Got Reincarnated as a Slime show
+        Assert.Equal(4, result.Count);
 
         var jjk = result.Single(m => m.Type == MediaType.Show && m.Name.Contains("Jujutsu Kaisen", StringComparison.OrdinalIgnoreCase));
         Assert.Single(jjk.Seasons);
@@ -45,6 +48,13 @@ public class MediaGrouperTests
         Assert.Single(darkMatter.Seasons);
         Assert.Equal(1, darkMatter.Seasons[0].SeasonNumber);
         Assert.Equal(3, darkMatter.Seasons[0].Episodes.Count);
+
+        var slime = result.Single(m => m.Type == MediaType.Show && m.Name.Contains("That Time I Got Reincarnated as a Slime", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, slime.Seasons.Count);
+        var slimeS1 = slime.Seasons.Single(s => s.SeasonNumber == 1);
+        Assert.Single(slimeS1.Episodes);
+        var slimeS2 = slime.Seasons.Single(s => s.SeasonNumber == 2);
+        Assert.Equal(2, slimeS2.Episodes.Count);
     }
 
     // ───────────────────── Movie classification ─────────────────────
@@ -204,6 +214,22 @@ public class MediaGrouperTests
 
         var show = Assert.Single(result);
         Assert.Equal(MediaType.Show, show.Type);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_VersionTagStripped_FilesGrouped()
+    {
+        var files = new List<string>
+        {
+            "/dl/[EMBER] Gachiakuta - 01 V3.mkv",
+            "/dl/[EMBER] Gachiakuta - 21.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
 
     // ───────────────────── Similarity / fuzzy matching ─────────────────────
@@ -442,5 +468,80 @@ public class MediaGrouperTests
         var show = Assert.Single(result);
         Assert.Equal(MediaType.Show, show.Type);
         Assert.Equal(2, show.Seasons[0].Episodes.Count);
+    }
+
+    // ───────────────────── Folder-based title fallback ─────────────────────
+
+    [Fact]
+    public void GroupMediaFiles_SxxExxAtStartOfFilename_UsesFolderNameAsTitle()
+    {
+        // Filenames don't contain the show name — only the parent folder does
+        var files = new List<string>
+        {
+            "/media/ThatTimeIGotReincarnatedAsASlime/S02E06-The Beauty Makes Her Move [5F8B3E3E].mkv",
+            "/media/ThatTimeIGotReincarnatedAsASlime/S02E07-bladiebla[5F8B3E3E].mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Contains("ThatTimeIGotReincarnatedAsASlime", show.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(show.Seasons);
+        Assert.Equal(2, show.Seasons[0].SeasonNumber);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_FilesInSeasonSubfolder_UsesGrandparentFolderName()
+    {
+        // Files are already in a Season subfolder — should use grandparent for show name
+        var files = new List<string>
+        {
+            "/media/MyGreatShow/Season 02/S02E01-Pilot.mkv",
+            "/media/MyGreatShow/Season 02/S02E02-SecondEp.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Contains("MyGreatShow", show.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_DissimilarTitlesSameFolderAndSeason_MergedByFolderName()
+    {
+        // Filenames contain episode descriptions, not show names, but SxxExx is present
+        var files = new List<string>
+        {
+            "/media/CoolShow/The Beginning S01E01.mkv",
+            "/media/CoolShow/Darkness Falls S01E02.mkv",
+            "/media/CoolShow/New Dawn S01E03.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Contains("CoolShow", show.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(3, show.Seasons[0].Episodes.Count);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_CoherentTitlesInSameFolder_NotOverriddenByFolderName()
+    {
+        // Filenames already share the same show name — folder override should NOT fire
+        var files = new List<string>
+        {
+            "/media/SomeFolder/Dark Matter S01E06.mkv",
+            "/media/SomeFolder/Dark Matter S01E07.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Equal("Dark Matter", show.Name);
     }
 }
