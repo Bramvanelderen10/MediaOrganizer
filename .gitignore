@@ -10,3 +10,5 @@ logs/
 upload-keystore.*
 *.jks
 *.keystore
+
+nupkg/
