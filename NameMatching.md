@@ -56,9 +56,10 @@ It applies these transformations, in this order:
 1. Remove bracketed content: any `[...]` or `(...)`
 2. Remove resolution tags matching `2160p/i`, `1080p/i`, `720p/i`, `480p/i`, `360p/i`
 3. Remove codec-ish tags like `x264`, `x265`, `h264`, `h.265`, `HEVC`, `AVC`, `AAC`, `DTS`, `FLAC`, `10bit`, `8bit`
-4. Remove known release/source tags (examples): `ELiTE`, `YIFY`, `BONE`, `RARBG`, `SubsPlease`, `BluRay`, `BRRip`, `WEBRip`, `WEB-DL`, `HDRip`, `DVDRip`, `Dual Audio`, `PROPER`, `REPACK`, `INTERNAL`
-5. Replace separators `.` `_` `-` with spaces
-6. Collapse whitespace and trim
+4. Remove known release/source tags (examples): `ELiTE`, `YIFY`, `BONE`, `RARBG`, `SubsPlease`, `BluRay`, `BRRip`, `WEBRip`, `WEB-DL`, `HDRip`, `DVDRip`, `Dual Audio`, `PROPER`, `REPACK`, `EMBER`, `Cleo`, `INTERNAL`
+5. Remove version tags like `V2`, `V3`, etc.
+6. Replace separators `.` `_` `-` with spaces
+7. Collapse whitespace and trim
 
 Example:
 
@@ -73,7 +74,9 @@ After cleaning, parsing tries these patterns in order.
 
 #### A) SxxExx (highest priority)
 
-Pattern (conceptually): `\bS(?<season>\d{1,2})\s*E(?<episode>\d{1,4})\b` (case-insensitive)
+Pattern (conceptually): `\bSE?(?<season>\d{1,2})\s*E(?<episode>\d{1,4})\b` (case-insensitive)
+
+The `E?` after `S` allows an optional literal `E`, so both `S01E07` and `SE01E07` are matched.
 
 - `Season` and `Episode` come from the match
 - `Title` becomes the cleaned text *before* the match
@@ -87,7 +90,30 @@ Season: 1
 Episode: 7
 ```
 
-#### B) Trailing number (fallback)
+#### B) SxxDashExx / Sxx space xx (second priority)
+
+Pattern (conceptually): `\bS(?<season>\d{1,2})(?:\s*[-–—]\s*|\s+)(?<episode>\d{1,4})\b` (case-insensitive)
+
+Matches season–episode pairs separated by a dash (or em/en dash) or whitespace, without the `E` prefix on the episode number.
+
+- `Season` and `Episode` come from the match
+- `Title` becomes the cleaned text *before* the match
+
+Examples:
+
+```
+Clean:  My Show S2 03
+Title:  My Show
+Season: 2
+Episode: 3
+
+Clean:  My Show S2 - 03
+Title:  My Show
+Season: 2
+Episode: 3
+```
+
+#### C) Trailing number (fallback)
 
 Pattern (conceptually): `\s+(?<episode>\d{1,4})\s*$`
 
@@ -105,9 +131,9 @@ Season: null
 Episode: 56
 ```
 
-#### C) No episode info
+#### D) No episode info
 
-If neither pattern matches:
+If no pattern matches:
 
 - `Title` becomes the full cleaned name
 - `Season` and `Episode` are null
@@ -138,7 +164,10 @@ Parent: MyShow   (grandparent, because immediate parent is "Season 02")
 
 ### 2.4 Empty title fallback
 
-After SxxExx or SxxDashExx pattern matching, if the extracted title is empty (i.e. the pattern appears at the very start of the cleaned filename), the title is replaced with the `ParentFolderCleanName`.
+After SxxExx or SxxDashExx pattern matching, if the extracted title is empty (i.e. the pattern appears at the very start of the cleaned filename), the title is replaced with the parent folder name.
+
+- For the **SxxExx** pattern (A), the parent folder name is passed through `ExtractTitleFromFolderName`, which strips any `Season XX` or `SXX` marker from the folder name (taking only the text before the marker). This prevents the title from containing redundant season info.
+- For the **SxxDashExx** pattern (B), the raw `ParentFolderCleanName` is used directly.
 
 Example:
 
@@ -146,6 +175,11 @@ Example:
 Path:   /media/ThatTimeIGotReincarnatedAsASlime/S02E06-The Beauty Makes Her Move [5F8B3E3E].mkv
 Clean:  S02E06 The Beauty Makes Her Move
 Title:  "" → falls back to "ThatTimeIGotReincarnatedAsASlime" (parent folder)
+
+Path:   /media/My Show S02/S02E01-Pilot.mkv
+Clean:  S02E01 Pilot
+Title:  "" → parent folder cleaned name is "My Show S02"
+       → ExtractTitleFromFolderName strips "S02" → "My Show"
 ```
 
 ---
