@@ -443,4 +443,79 @@ public class MediaGrouperTests
         Assert.Equal(MediaType.Show, show.Type);
         Assert.Equal(2, show.Seasons[0].Episodes.Count);
     }
+
+    // ───────────────────── Folder-based title fallback ─────────────────────
+
+    [Fact]
+    public void GroupMediaFiles_SxxExxAtStartOfFilename_UsesFolderNameAsTitle()
+    {
+        // Filenames don't contain the show name — only the parent folder does
+        var files = new List<string>
+        {
+            "/media/ThatTimeIGotReincarnatedAsASlime/S02E06-The Beauty Makes Her Move [5F8B3E3E].mkv",
+            "/media/ThatTimeIGotReincarnatedAsASlime/S02E07-bladiebla[5F8B3E3E].mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Contains("ThatTimeIGotReincarnatedAsASlime", show.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(show.Seasons);
+        Assert.Equal(2, show.Seasons[0].SeasonNumber);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_FilesInSeasonSubfolder_UsesGrandparentFolderName()
+    {
+        // Files are already in a Season subfolder — should use grandparent for show name
+        var files = new List<string>
+        {
+            "/media/MyGreatShow/Season 02/S02E01-Pilot.mkv",
+            "/media/MyGreatShow/Season 02/S02E02-SecondEp.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Contains("MyGreatShow", show.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_DissimilarTitlesSameFolderAndSeason_MergedByFolderName()
+    {
+        // Filenames contain episode descriptions, not show names, but SxxExx is present
+        var files = new List<string>
+        {
+            "/media/CoolShow/The Beginning S01E01.mkv",
+            "/media/CoolShow/Darkness Falls S01E02.mkv",
+            "/media/CoolShow/New Dawn S01E03.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Contains("CoolShow", show.Name, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(3, show.Seasons[0].Episodes.Count);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_CoherentTitlesInSameFolder_NotOverriddenByFolderName()
+    {
+        // Filenames already share the same show name — folder override should NOT fire
+        var files = new List<string>
+        {
+            "/media/SomeFolder/Dark Matter S01E06.mkv",
+            "/media/SomeFolder/Dark Matter S01E07.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Equal("Dark Matter", show.Name);
+    }
 }

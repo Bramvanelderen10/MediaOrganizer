@@ -12,6 +12,7 @@ public class MediaGrouper
     private static readonly Regex SeasonDashEpisodePattern = new(@"\bS(?<season>\d{1,2})(?:\s*[-–—]\s*|\s+)(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TrailingNumberPattern = new(@"\s+(?<episode>\d{1,4})\s*$", RegexOptions.Compiled);
     private static readonly Regex MultiSpacePattern = new(@"\s+", RegexOptions.Compiled);
+    private static readonly Regex SeasonFolderPattern = new(@"^Season\s*\d{1,2}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private const double SimilarityThreshold = 0.80;
 
@@ -22,6 +23,7 @@ public class MediaGrouper
     public List<MediaObject> GroupMediaFiles(IReadOnlyList<string> allVideoFiles)
     {
         var parsedFiles = allVideoFiles.Select(ParseVideoFile).ToList();
+        parsedFiles = ApplyFolderBasedTitleOverrides(parsedFiles);
         var groups = GroupBySimilarTitle(parsedFiles);
         return groups.Select(BuildMediaObject).ToList();
     }
@@ -33,6 +35,8 @@ public class MediaGrouper
         var fileName = Path.GetFileNameWithoutExtension(filePath);
         var cleaned = CleanName(fileName);
 
+        var parentFolderCleanName = GetCleanParentFolderName(filePath);
+
         // Try SxxExx first (e.g. S01E07)
         var seMatch = SeasonEpisodePattern.Match(cleaned);
         if (seMatch.Success)
@@ -41,7 +45,12 @@ public class MediaGrouper
             var episode = int.Parse(seMatch.Groups["episode"].Value);
             var title = NormalizeSpaces(cleaned[..seMatch.Index]);
 
-            return new ParsedVideoFile(filePath, title, cleaned, season, episode, GetCleanParentFolderName(filePath));
+            // Fall back to parent folder name when the title is empty
+            // (e.g. filename starts with SxxExx like "S02E06-Episode Name")
+            if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(parentFolderCleanName))
+                title = parentFolderCleanName;
+
+            return new ParsedVideoFile(filePath, title, cleaned, season, episode, parentFolderCleanName);
         }
 
         // Try Sxx - xx (e.g. S2 - 03)
@@ -52,7 +61,10 @@ public class MediaGrouper
             var episode = int.Parse(sdMatch.Groups["episode"].Value);
             var title = NormalizeSpaces(cleaned[..sdMatch.Index]);
 
-            return new ParsedVideoFile(filePath, title, cleaned, season, episode, GetCleanParentFolderName(filePath));
+            if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(parentFolderCleanName))
+                title = parentFolderCleanName;
+
+            return new ParsedVideoFile(filePath, title, cleaned, season, episode, parentFolderCleanName);
         }
 
         // Try trailing episode number (e.g. "Jujutsu Kaisen 58")
@@ -62,11 +74,11 @@ public class MediaGrouper
             var episode = int.Parse(epMatch.Groups["episode"].Value);
             var title = NormalizeSpaces(cleaned[..epMatch.Index]);
 
-            return new ParsedVideoFile(filePath, title, cleaned, null, episode, GetCleanParentFolderName(filePath));
+            return new ParsedVideoFile(filePath, title, cleaned, null, episode, parentFolderCleanName);
         }
 
         // No episode info detected
-        return new ParsedVideoFile(filePath, NormalizeSpaces(cleaned), cleaned, null, null, GetCleanParentFolderName(filePath));
+        return new ParsedVideoFile(filePath, NormalizeSpaces(cleaned), cleaned, null, null, parentFolderCleanName);
     }
 
     private string CleanName(string name)
@@ -95,12 +107,71 @@ public class MediaGrouper
         if (string.IsNullOrEmpty(folderName))
             return null;
 
+        // If the immediate parent is a "Season XX" folder, use the grandparent instead
+        if (SeasonFolderPattern.IsMatch(folderName))
+        {
+            var grandparentDir = Path.GetDirectoryName(dir);
+            if (!string.IsNullOrEmpty(grandparentDir))
+            {
+                var grandparentName = Path.GetFileName(grandparentDir);
+                if (!string.IsNullOrEmpty(grandparentName))
+                    folderName = grandparentName;
+            }
+        }
+
         var cleaned = NormalizeSpaces(CleanName(folderName));
         return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
     }
 
     private static string NormalizeSpaces(string value)
         => MultiSpacePattern.Replace(value, " ").Trim();
+
+    // ──────────────────────────── Pre-grouping ────────────────────────────
+
+    /// <summary>
+    /// For files sharing the same parent folder and season, if their titles are incoherent
+    /// (no single title is similar to the majority), override all titles with the parent folder name.
+    /// This handles cases where filenames contain episode descriptions instead of show names.
+    /// </summary>
+    private static List<ParsedVideoFile> ApplyFolderBasedTitleOverrides(List<ParsedVideoFile> files)
+    {
+        // Group by (parent directory, season) — only files with a parsed season
+        var folderSeasonGroups = files
+            .Where(f => f.Season.HasValue)
+            .GroupBy(f => (Dir: Path.GetDirectoryName(f.FilePath) ?? "", Season: f.Season!.Value));
+
+        var overrides = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in folderSeasonGroups)
+        {
+            var items = group.ToList();
+            if (items.Count < 2)
+                continue;
+
+            // Check if there's a coherent title cluster:
+            // any title that is similar to at least 50% of the other titles
+            var hasCoherentCluster = items.Any(candidate =>
+            {
+                var matchCount = items.Count(other => AreTitlesSimilar(candidate.Title, other.Title));
+                return matchCount * 2 >= items.Count;
+            });
+
+            if (!hasCoherentCluster)
+            {
+                foreach (var item in items)
+                    overrides.Add(item.FilePath);
+            }
+        }
+
+        if (overrides.Count == 0)
+            return files;
+
+        return files.Select(f =>
+            overrides.Contains(f.FilePath) && !string.IsNullOrWhiteSpace(f.ParentFolderCleanName)
+                ? f with { Title = f.ParentFolderCleanName }
+                : f
+        ).ToList();
+    }
 
     // ──────────────────────────── Grouping ────────────────────────────
 

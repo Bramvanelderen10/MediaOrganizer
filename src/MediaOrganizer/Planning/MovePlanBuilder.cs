@@ -161,13 +161,20 @@ public class MovePlanBuilder
         // Find which season this episode belongs to
         foreach (var season in media.Seasons)
         {
-            if (season.Episodes.Any(e => e.Path == filePath))
+            var episode = season.Episodes.FirstOrDefault(e => e.Path == filePath);
+            if (episode != null)
             {
                 var seasonFolder = Path.Combine(rootFolder, media.Name, $"Season {season.SeasonNumber:00}");
                 var fileName = Path.GetFileNameWithoutExtension(filePath);
                 // Strip trailing copy suffixes like " (1)" that may have accumulated
                 // from previous forget/re-organize cycles
                 fileName = PathHelpers.StripTrailingCopySuffixes(fileName);
+
+                // If the original filename doesn't contain the show name,
+                // reconstruct it as "{ShowName} S{Season}E{Episode}"
+                if (!FileNameContainsShowName(fileName, media.Name))
+                    fileName = $"{media.Name} S{season.SeasonNumber:00}E{episode.EpisodeNumber:00}";
+
                 return Path.Combine(seasonFolder, $"{fileName}{extension}");
             }
         }
@@ -175,5 +182,15 @@ public class MovePlanBuilder
         // Fallback - shouldn't reach here if media object is properly constructed
         throw new InvalidOperationException(
             $"Could not determine destination path for file {filePath} in media object {media.Name}");
+    }
+
+    private static bool FileNameContainsShowName(string fileName, string showName)
+    {
+        var normalizedFileName = fileName
+            .Replace('.', ' ')
+            .Replace('_', ' ')
+            .Replace('-', ' ');
+
+        return normalizedFileName.Contains(showName, StringComparison.OrdinalIgnoreCase);
     }
 }
