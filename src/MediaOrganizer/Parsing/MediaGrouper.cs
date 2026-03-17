@@ -7,7 +7,7 @@ public class MediaGrouper
     private static readonly Regex BracketPattern = new(@"\[[^\]]*\]|\([^\)]*\)", RegexOptions.Compiled);
     private static readonly Regex ResolutionPattern = new(@"\b(2160|1080|720|480|360)[pi]\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex CodecPattern = new(@"\b(x264|x265|h\.?264|h\.?265|HEVC|AVC|AAC|DTS|FLAC|10bit|8bit)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex ReleaseGroupPattern = new(@"\b(ELiTE|YIFY|BONE|AAC5|RARBG|FGT|LOL|ETTV|EZTVx?|SubsPlease|BluRay|BRRip|WEBRip|WEB[\-\.]?DL|HDRip|DVDRip|Dual\s*Audio|PROPER|REPACK|INTERNAL)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ReleaseGroupPattern = new(@"\b(ELiTE|YIFY|BONE|AAC5|RARBG|FGT|LOL|ETTV|EZTVx?|SubsPlease|BluRay|BRRip|WEBRip|WEB[\-\.]?DL|HDRip|DVDRip|Dual\s*Audio|PROPER|REPACK|EMBER|Cleo|INTERNAL)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex VersionTagPattern = new(@"\b[Vv]\d+\b", RegexOptions.Compiled);
     private static readonly Regex SeasonEpisodePattern = new(@"\bS(?<season>\d{1,2})\s*E(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex SeasonDashEpisodePattern = new(@"\bS(?<season>\d{1,2})(?:\s*[-–—]\s*|\s+)(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
