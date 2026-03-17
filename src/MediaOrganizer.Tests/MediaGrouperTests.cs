@@ -24,13 +24,16 @@ public class MediaGrouperTests
             "/media/Dark Matter 1080p x265 ELiTE[EZTVx to] S01E07.mkv",
             "/media/Dark Matter/Dark Matter 1080p x265 ELiTE[EZTVx to] S01E08.mkv",
             "/media/Dark Matter/Season 01/Dark Matter S01E06.mkv",
+            "/media/That Time I Got Reincarnated as a Slime S01-S02+OVA+SP & Slime Diaries 1080p Dual Audio BDRip 10 bits DD x265-EMBER/01. Season 1 + Special/SE01E01-The Beauty Makes Her Move [5F8B3E3E].mkv",
+            "/media/That Time I Got Reincarnated as a Slime S01-S02+OVA+SP & Slime Diaries 1080p Dual Audio BDRip 10 bits DD x265-EMBER/01. Season 2 + Special/SE02E01-The Beauty Makes Her Move [5F8B3E3E].mkv",
+            "/media/That Time I Got Reincarnated as a Slime SE02E02.mkv",
         };
 
         // Act
         var result = _sut.GroupMediaFiles(files);
 
-        // Assert — 3 groups: Jujutsu Kaisen show, Taxi Driver movie, Dark Matter show
-        Assert.Equal(3, result.Count);
+        // Assert — 4 groups: Jujutsu Kaisen show, Taxi Driver movie, Dark Matter show, That Time I Got Reincarnated as a Slime show
+        Assert.Equal(4, result.Count);
 
         var jjk = result.Single(m => m.Type == MediaType.Show && m.Name.Contains("Jujutsu Kaisen", StringComparison.OrdinalIgnoreCase));
         Assert.Single(jjk.Seasons);
@@ -45,6 +48,11 @@ public class MediaGrouperTests
         Assert.Single(darkMatter.Seasons);
         Assert.Equal(1, darkMatter.Seasons[0].SeasonNumber);
         Assert.Equal(3, darkMatter.Seasons[0].Episodes.Count);
+
+        var slime = result.Single(m => m.Type == MediaType.Show && m.Name.Contains("That Time I Got Reincarnated as a Slime", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(slime.Seasons);
+        Assert.Equal(1, slime.Seasons[0].SeasonNumber);
+        Assert.Single(slime.Seasons[0].Episodes);
     }
 
     // ───────────────────── Movie classification ─────────────────────

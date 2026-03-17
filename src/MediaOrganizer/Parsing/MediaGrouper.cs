@@ -13,7 +13,7 @@ public class MediaGrouper
     private static readonly Regex SeasonDashEpisodePattern = new(@"\bS(?<season>\d{1,2})(?:\s*[-–—]\s*|\s+)(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TrailingNumberPattern = new(@"\s+(?<episode>\d{1,4})\s*$", RegexOptions.Compiled);
     private static readonly Regex MultiSpacePattern = new(@"\s+", RegexOptions.Compiled);
-    private static readonly Regex SeasonFolderPattern = new(@"^Season\s*\d{1,2}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex SeasonFolderPattern = new(@"\bSeason\s*(?<season>\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private const double SimilarityThreshold = 0.80;
 
@@ -26,10 +26,12 @@ public class MediaGrouper
         var parsedFiles = allVideoFiles.Select(ParseVideoFile).ToList();
         parsedFiles = ApplyFolderBasedTitleOverrides(parsedFiles);
         var groups = GroupBySimilarTitle(parsedFiles);
-        return groups.Select(BuildMediaObject).ToList();
+
+        var mediaObjects = groups.Select(BuildMediaObject).ToList();
+        return mediaObjects;
     }
 
-    // ──────────────────────────── Parsing ────────────────────────────
+    // ────────────────────────── ── Parsing ────────────────────────────
 
     private ParsedVideoFile ParseVideoFile(string filePath)
     {
@@ -49,7 +51,13 @@ public class MediaGrouper
             // Fall back to parent folder name when the title is empty
             // (e.g. filename starts with SxxExx like "S02E06-Episode Name")
             if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(parentFolderCleanName))
-                title = parentFolderCleanName;
+            {
+                var seFolderMatch = SeasonFolderPattern.Match(parentFolderCleanName);
+                if (seFolderMatch.Success)
+                    title = parentFolderCleanName[..seFolderMatch.Index].Trim();
+                else
+                    title = parentFolderCleanName;
+            }
 
             return new ParsedVideoFile(filePath, title, cleaned, season, episode, parentFolderCleanName);
         }
