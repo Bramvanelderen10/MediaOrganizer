@@ -50,9 +50,11 @@ public class MediaGrouperTests
         Assert.Equal(3, darkMatter.Seasons[0].Episodes.Count);
 
         var slime = result.Single(m => m.Type == MediaType.Show && m.Name.Contains("That Time I Got Reincarnated as a Slime", StringComparison.OrdinalIgnoreCase));
-        Assert.Single(slime.Seasons);
-        Assert.Equal(1, slime.Seasons[0].SeasonNumber);
-        Assert.Single(slime.Seasons[0].Episodes);
+        Assert.Equal(2, slime.Seasons.Count);
+        var slimeS1 = slime.Seasons.Single(s => s.SeasonNumber == 1);
+        Assert.Single(slimeS1.Episodes);
+        var slimeS2 = slime.Seasons.Single(s => s.SeasonNumber == 2);
+        Assert.Equal(2, slimeS2.Episodes.Count);
     }
 
     // ───────────────────── Movie classification ─────────────────────

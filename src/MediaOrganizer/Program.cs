@@ -140,7 +140,11 @@ app.MapGet("/storage-info", (Microsoft.Extensions.Options.IOptions<MediaOrganize
         });
     }
 
-    var driveInfo = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(folder))!);
+    var fullPath = Path.GetFullPath(folder);
+    var driveInfo = DriveInfo.GetDrives()
+        .Where(d => d.IsReady && fullPath.StartsWith(d.RootDirectory.FullName, StringComparison.Ordinal))
+        .OrderByDescending(d => d.RootDirectory.FullName.Length)
+        .First();
 
     return Results.Ok(new
     {

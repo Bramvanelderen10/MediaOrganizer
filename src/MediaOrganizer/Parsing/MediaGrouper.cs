@@ -9,11 +9,12 @@ public class MediaGrouper
     private static readonly Regex CodecPattern = new(@"\b(x264|x265|h\.?264|h\.?265|HEVC|AVC|AAC|DTS|FLAC|10bit|8bit)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ReleaseGroupPattern = new(@"\b(ELiTE|YIFY|BONE|AAC5|RARBG|FGT|LOL|ETTV|EZTVx?|SubsPlease|BluRay|BRRip|WEBRip|WEB[\-\.]?DL|HDRip|DVDRip|Dual\s*Audio|PROPER|REPACK|EMBER|Cleo|INTERNAL)\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex VersionTagPattern = new(@"\b[Vv]\d+\b", RegexOptions.Compiled);
-    private static readonly Regex SeasonEpisodePattern = new(@"\bS(?<season>\d{1,2})\s*E(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex SeasonEpisodePattern = new(@"\bSE?(?<season>\d{1,2})\s*E(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex SeasonDashEpisodePattern = new(@"\bS(?<season>\d{1,2})(?:\s*[-–—]\s*|\s+)(?<episode>\d{1,4})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex TrailingNumberPattern = new(@"\s+(?<episode>\d{1,4})\s*$", RegexOptions.Compiled);
     private static readonly Regex MultiSpacePattern = new(@"\s+", RegexOptions.Compiled);
     private static readonly Regex SeasonFolderPattern = new(@"\bSeason\s*(?<season>\d{1,2})\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex FolderSeasonMarkerPattern = new(@"\bS\d{1,2}\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private const double SimilarityThreshold = 0.80;
 
@@ -52,11 +53,7 @@ public class MediaGrouper
             // (e.g. filename starts with SxxExx like "S02E06-Episode Name")
             if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(parentFolderCleanName))
             {
-                var seFolderMatch = SeasonFolderPattern.Match(parentFolderCleanName);
-                if (seFolderMatch.Success)
-                    title = parentFolderCleanName[..seFolderMatch.Index].Trim();
-                else
-                    title = parentFolderCleanName;
+                title = ExtractTitleFromFolderName(parentFolderCleanName);
             }
 
             return new ParsedVideoFile(filePath, title, cleaned, season, episode, parentFolderCleanName);
@@ -136,6 +133,19 @@ public class MediaGrouper
 
     private static string NormalizeSpaces(string value)
         => MultiSpacePattern.Replace(value, " ").Trim();
+
+    private static string ExtractTitleFromFolderName(string folderCleanName)
+    {
+        var seasonMatch = SeasonFolderPattern.Match(folderCleanName);
+        if (seasonMatch.Success && seasonMatch.Index > 0)
+            return folderCleanName[..seasonMatch.Index].Trim();
+
+        var markerMatch = FolderSeasonMarkerPattern.Match(folderCleanName);
+        if (markerMatch.Success && markerMatch.Index > 0)
+            return folderCleanName[..markerMatch.Index].Trim();
+
+        return folderCleanName;
+    }
 
     // ──────────────────────────── Pre-grouping ────────────────────────────
 
