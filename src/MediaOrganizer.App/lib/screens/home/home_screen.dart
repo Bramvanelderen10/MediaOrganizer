@@ -4,6 +4,7 @@ import '../../di/service_locator.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import '../setup/setup_screen.dart';
+import '../file_browser/file_browser_screen.dart';
 import '../library/library_screen.dart';
 import '../storage/storage_screen.dart';
 import 'widgets/api_status_header.dart';
@@ -11,7 +12,13 @@ import 'widgets/forget_season_dialog.dart';
 import 'widgets/log_stream_container.dart';
 import 'widgets/organize_button.dart';
 
-enum _AppMenuAction { library, storage, forgetShowSeason, resetApiUrl }
+enum _AppMenuAction {
+  library,
+  fileBrowser,
+  storage,
+  forgetShowSeason,
+  resetApiUrl,
+}
 
 /// Main screen with a single button to trigger the organize job.
 class HomeScreen extends StatefulWidget {
@@ -281,6 +288,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     MaterialPageRoute(builder: (_) => LibraryScreen(api: _api)),
                   );
                   break;
+                case _AppMenuAction.fileBrowser:
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => FileBrowserScreen(api: _api),
+                    ),
+                  );
+                  break;
                 case _AppMenuAction.storage:
                   Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => StorageScreen(api: _api)),
@@ -299,6 +313,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   PopupMenuItem<_AppMenuAction>(
                     value: _AppMenuAction.library,
                     child: Text('Library'),
+                  ),
+                  PopupMenuItem<_AppMenuAction>(
+                    value: _AppMenuAction.fileBrowser,
+                    child: Text('Source Files'),
                   ),
                   PopupMenuItem<_AppMenuAction>(
                     value: _AppMenuAction.storage,

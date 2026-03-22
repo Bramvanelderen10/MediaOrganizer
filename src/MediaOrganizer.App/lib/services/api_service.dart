@@ -148,6 +148,67 @@ class ApiService {
     }
     throw ApiException(response.statusCode, response.body);
   }
+
+  /// Browses directory contents under the source folder via GET /browse.
+  /// [path] is relative to the source root. Omit for the root listing.
+  Future<Map<String, dynamic>> browse({String? path}) async {
+    final uri =
+        path != null && path.isNotEmpty
+            ? _uri('/browse?path=${Uri.encodeQueryComponent(path)}')
+            : _uri('/browse');
+    final response = await http.get(uri);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Renames a file or directory via POST /rename.
+  Future<String> rename({required String path, required String newName}) async {
+    final response = await http.post(
+      _uri('/rename'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'path': path, 'newName': newName}),
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body;
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Moves a file or directory to a different folder via POST /move.
+  Future<String> moveItem({
+    required String sourcePath,
+    required String destinationFolder,
+  }) async {
+    final response = await http.post(
+      _uri('/move'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'sourcePath': sourcePath,
+        'destinationFolder': destinationFolder,
+      }),
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body;
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Deletes one or more files or directories via POST /delete.
+  Future<Map<String, dynamic>> deleteItems({
+    required List<String> paths,
+  }) async {
+    final response = await http.post(
+      _uri('/delete'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'paths': paths}),
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
 }
 
 class ApiException implements Exception {
