@@ -96,6 +96,22 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
+  /// Forgets move history for multiple items at once via POST /forget-batch.
+  /// Each item is a map with 'type' and relevant identifiers.
+  Future<String> forgetBatch(List<Map<String, dynamic>> items) async {
+    final response = await http.post(
+      _uri('/forget-batch'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'items': items}),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body;
+    }
+
+    throw ApiException(response.statusCode, response.body);
+  }
+
   /// Quick connectivity check via GET /health.
   Future<bool> healthCheck({
     Duration timeout = const Duration(seconds: 5),

@@ -334,6 +334,38 @@ app.MapGet("/library", (MoveHistoryStore moveHistoryStore) =>
 .WithSummary("Returns the organized media library structure")
 .WithDescription("Parses move history unique keys to build a structured view of movies and TV shows with seasons and episodes.");
 
+app.MapPost("/forget-batch", (MoveHistoryStore moveHistoryStore, ForgetBatchRequest request) =>
+{
+    if (request.Items is null || request.Items.Length == 0)
+    {
+        return Results.BadRequest(new { message = "items array is required and must not be empty" });
+    }
+
+    var totalDeleted = 0;
+    foreach (var item in request.Items)
+    {
+        totalDeleted += item.Type?.ToLowerInvariant() switch
+        {
+            "movie" => moveHistoryStore.ForgetMovie(item.MovieName ?? ""),
+            "show" => moveHistoryStore.ForgetShow(item.ShowName ?? ""),
+            "season" => moveHistoryStore.ForgetShowSeason(item.ShowName ?? "", item.SeasonNumber ?? 0),
+            "episode" => moveHistoryStore.ForgetEpisode(item.ShowName ?? "", item.SeasonNumber ?? 0, item.EpisodeNumber ?? 0),
+            _ => 0
+        };
+    }
+
+    return Results.Ok(new
+    {
+        message = "Batch forget completed",
+        executedAt = DateTime.Now,
+        itemCount = request.Items.Length,
+        deletedCount = totalDeleted
+    });
+})
+.WithName("ForgetBatch")
+.WithSummary("Deletes move-history entries for multiple items at once")
+.WithDescription("Accepts an array of items, each specifying a type (movie, show, season, episode) and the relevant identifiers.");
+
 app.MapGet("/", () => Results.Ok(new
 {
     message = "Media Organizer API",
@@ -344,6 +376,7 @@ app.MapGet("/", () => Results.Ok(new
         forgetShow = "POST /forget-show",
         forgetShowSeason = "POST /forget-show-season",
         forgetEpisode = "POST /forget-episode",
+        forgetBatch = "POST /forget-batch",
         storageInfo = "GET /storage-info",
         library = "GET /library",
         health = "GET /health",
@@ -363,3 +396,5 @@ public record ForgetShowSeasonRequest(string ShowName, int SeasonNumber);
 public record ForgetMovieRequest(string MovieName);
 public record ForgetShowRequest(string ShowName);
 public record ForgetEpisodeRequest(string ShowName, int SeasonNumber, int EpisodeNumber);
+public record ForgetBatchRequest(ForgetBatchItem[] Items);
+public record ForgetBatchItem(string? Type, string? MovieName, string? ShowName, int? SeasonNumber, int? EpisodeNumber);
