@@ -43,6 +43,59 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
+  /// Forgets move history for a specific movie via POST /forget-movie.
+  Future<String> forgetMovie({required String movieName}) async {
+    final response = await http.post(
+      _uri('/forget-movie'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'movieName': movieName}),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body;
+    }
+
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Forgets all move history for a show (all seasons) via POST /forget-show.
+  Future<String> forgetShow({required String showName}) async {
+    final response = await http.post(
+      _uri('/forget-show'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'showName': showName}),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body;
+    }
+
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Forgets move history for a specific episode via POST /forget-episode.
+  Future<String> forgetEpisode({
+    required String showName,
+    required int seasonNumber,
+    required int episodeNumber,
+  }) async {
+    final response = await http.post(
+      _uri('/forget-episode'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'showName': showName,
+        'seasonNumber': seasonNumber,
+        'episodeNumber': episodeNumber,
+      }),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return response.body;
+    }
+
+    throw ApiException(response.statusCode, response.body);
+  }
+
   /// Quick connectivity check via GET /health.
   Future<bool> healthCheck({
     Duration timeout = const Duration(seconds: 5),

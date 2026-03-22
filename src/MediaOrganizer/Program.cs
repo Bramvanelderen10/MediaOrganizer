@@ -105,6 +105,81 @@ app.MapPost("/forget-show-season", (MoveHistoryStore moveHistoryStore, ForgetSho
 .WithSummary("Deletes move-history entries for a specific show season")
 .WithDescription("Removes all tracked move-history rows for the given show name and season number.");
 
+app.MapPost("/forget-movie", (MoveHistoryStore moveHistoryStore, ForgetMovieRequest request) =>
+{
+    if (string.IsNullOrWhiteSpace(request.MovieName))
+    {
+        return Results.BadRequest(new { message = "movieName is required" });
+    }
+
+    var deletedCount = moveHistoryStore.ForgetMovie(request.MovieName);
+
+    return Results.Ok(new
+    {
+        message = "Forget movie completed",
+        executedAt = DateTime.Now,
+        movieName = request.MovieName,
+        deletedCount
+    });
+})
+.WithName("ForgetMovie")
+.WithSummary("Deletes move-history entries for a specific movie")
+.WithDescription("Removes tracked move-history rows matching the given movie name.");
+
+app.MapPost("/forget-show", (MoveHistoryStore moveHistoryStore, ForgetShowRequest request) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ShowName))
+    {
+        return Results.BadRequest(new { message = "showName is required" });
+    }
+
+    var deletedCount = moveHistoryStore.ForgetShow(request.ShowName);
+
+    return Results.Ok(new
+    {
+        message = "Forget show completed",
+        executedAt = DateTime.Now,
+        showName = request.ShowName,
+        deletedCount
+    });
+})
+.WithName("ForgetShow")
+.WithSummary("Deletes all move-history entries for a show")
+.WithDescription("Removes all tracked move-history rows for the given show name across all seasons.");
+
+app.MapPost("/forget-episode", (MoveHistoryStore moveHistoryStore, ForgetEpisodeRequest request) =>
+{
+    if (string.IsNullOrWhiteSpace(request.ShowName))
+    {
+        return Results.BadRequest(new { message = "showName is required" });
+    }
+
+    if (request.SeasonNumber <= 0)
+    {
+        return Results.BadRequest(new { message = "seasonNumber must be greater than 0" });
+    }
+
+    if (request.EpisodeNumber <= 0)
+    {
+        return Results.BadRequest(new { message = "episodeNumber must be greater than 0" });
+    }
+
+    var deletedCount = moveHistoryStore.ForgetEpisode(request.ShowName, request.SeasonNumber, request.EpisodeNumber);
+
+    return Results.Ok(new
+    {
+        message = "Forget episode completed",
+        executedAt = DateTime.Now,
+        showName = request.ShowName,
+        seasonNumber = request.SeasonNumber,
+        episodeNumber = request.EpisodeNumber,
+        deletedCount
+    });
+})
+.WithName("ForgetEpisode")
+.WithSummary("Deletes the move-history entry for a specific episode")
+.WithDescription("Removes the tracked move-history row for the given show name, season, and episode number.");
+
 app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",
@@ -265,7 +340,10 @@ app.MapGet("/", () => Results.Ok(new
     endpoints = new
     {
         triggerJob = "POST /trigger-job",
+        forgetMovie = "POST /forget-movie",
+        forgetShow = "POST /forget-show",
         forgetShowSeason = "POST /forget-show-season",
+        forgetEpisode = "POST /forget-episode",
         storageInfo = "GET /storage-info",
         library = "GET /library",
         health = "GET /health",
@@ -282,3 +360,6 @@ app.Run();
 
 public record TriggerJobRequest(string? FolderPath);
 public record ForgetShowSeasonRequest(string ShowName, int SeasonNumber);
+public record ForgetMovieRequest(string MovieName);
+public record ForgetShowRequest(string ShowName);
+public record ForgetEpisodeRequest(string ShowName, int SeasonNumber, int EpisodeNumber);
