@@ -59,6 +59,19 @@ public class MoveHistoryStore
             .ToList();
     }
 
+    /// <summary>
+    /// Retrieves all entries that have been moved successfully.
+    /// Used by the library endpoint to build a structured media view.
+    /// </summary>
+    public virtual IReadOnlyList<MoveHistoryEntry> GetMovedEntries()
+    {
+        using var context = _contextFactory.CreateDbContext();
+        return context.MoveHistory
+            .Where(e => e.IsMoved)
+            .OrderBy(e => e.UniqueKey)
+            .ToList();
+    }
+
     public virtual void UpdateTargetPath(long id, string targetPath)
     {
         using var context = _contextFactory.CreateDbContext();

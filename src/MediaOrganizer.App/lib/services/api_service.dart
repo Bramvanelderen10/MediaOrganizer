@@ -32,13 +32,8 @@ class ApiService {
   }) async {
     final response = await http.post(
       _uri('/forget-show-season'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'showName': showName,
-        'seasonNumber': seasonNumber,
-      }),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'showName': showName, 'seasonNumber': seasonNumber}),
     );
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -49,7 +44,9 @@ class ApiService {
   }
 
   /// Quick connectivity check via GET /health.
-  Future<bool> healthCheck({Duration timeout = const Duration(seconds: 5)}) async {
+  Future<bool> healthCheck({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
     try {
       final response = await http.get(_uri('/health')).timeout(timeout);
       return response.statusCode == 200;
@@ -72,6 +69,15 @@ class ApiService {
   Stream<String> streamLogs({int tail = 200}) {
     final clampedTail = tail.clamp(0, 1000);
     return SseClient.connect(_uri('/logs/stream?tail=$clampedTail'));
+  }
+
+  /// Fetches the organized media library structure via GET /library.
+  Future<Map<String, dynamic>> getLibrary() async {
+    final response = await http.get(_uri('/library'));
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+    throw ApiException(response.statusCode, response.body);
   }
 }
 

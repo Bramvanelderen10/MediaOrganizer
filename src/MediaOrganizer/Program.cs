@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -190,6 +192,73 @@ app.MapGet("/logs/stream", async (HttpContext context, LogBroadcaster broadcaste
 .WithSummary("Streams application logs as Server-Sent Events (SSE)")
 .WithDescription("Client connects and receives live log lines. Optional query parameter: ?tail=200");
 
+app.MapGet("/library", (MoveHistoryStore moveHistoryStore) =>
+{
+    var entries = moveHistoryStore.GetMovedEntries();
+
+    var movies = new List<object>();
+    var shows = new Dictionary<string, Dictionary<int, List<object>>>();
+
+    var seasonEpisodePattern = new Regex(@"^(.+)_Season(\d+)_Episode(\d+)$", RegexOptions.None, TimeSpan.FromSeconds(1));
+
+    foreach (var entry in entries)
+    {
+        var match = seasonEpisodePattern.Match(entry.UniqueKey);
+        if (match.Success)
+        {
+            var showName = match.Groups[1].Value;
+            var season = int.Parse(match.Groups[2].Value);
+            var episode = int.Parse(match.Groups[3].Value);
+
+            if (!shows.ContainsKey(showName))
+                shows[showName] = new Dictionary<int, List<object>>();
+
+            if (!shows[showName].ContainsKey(season))
+                shows[showName][season] = new List<object>();
+
+            shows[showName][season].Add(new
+            {
+                episodeNumber = episode,
+                originalPath = entry.OriginalFilePath,
+                targetPath = entry.TargetFilePath
+            });
+        }
+        else
+        {
+            movies.Add(new
+            {
+                name = entry.UniqueKey,
+                originalPath = entry.OriginalFilePath,
+                targetPath = entry.TargetFilePath
+            });
+        }
+    }
+
+    var showsList = shows.Select(s => new
+    {
+        name = s.Key,
+        seasons = s.Value
+            .OrderBy(kvp => kvp.Key)
+            .Select(kvp => new
+            {
+                seasonNumber = kvp.Key,
+                episodes = kvp.Value.OrderBy(e => ((dynamic)e).episodeNumber).ToList()
+            })
+            .ToList()
+    })
+    .OrderBy(s => s.name)
+    .ToList();
+
+    return Results.Ok(new
+    {
+        movies = movies.OrderBy(m => ((dynamic)m).name).ToList(),
+        shows = showsList
+    });
+})
+.WithName("Library")
+.WithSummary("Returns the organized media library structure")
+.WithDescription("Parses move history unique keys to build a structured view of movies and TV shows with seasons and episodes.");
+
 app.MapGet("/", () => Results.Ok(new
 {
     message = "Media Organizer API",
@@ -198,6 +267,7 @@ app.MapGet("/", () => Results.Ok(new
         triggerJob = "POST /trigger-job",
         forgetShowSeason = "POST /forget-show-season",
         storageInfo = "GET /storage-info",
+        library = "GET /library",
         health = "GET /health",
         streamLogs = "GET /logs/stream",
         openApiSpec = "GET /openapi/v1.json",
