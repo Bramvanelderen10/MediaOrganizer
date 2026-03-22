@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/home/home_screen.dart';
-import 'screens/setup_screen.dart';
+import 'screens/setup/setup_screen.dart';
 import 'services/storage_service.dart';
 
 void main() {

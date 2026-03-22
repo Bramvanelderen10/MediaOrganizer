@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
-import '../services/storage_service.dart';
-import 'home/home_screen.dart';
+import '../../services/api_service.dart';
+import '../../services/storage_service.dart';
+import '../home/home_screen.dart';
 
 /// First-time setup screen where the user enters the API URL.
 class SetupScreen extends StatefulWidget {

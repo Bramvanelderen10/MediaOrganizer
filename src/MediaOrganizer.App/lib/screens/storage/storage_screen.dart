@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/api_service.dart';
+import '../../services/api_service.dart';
 
 /// Displays disk storage information for the media destination folder.
 class StorageScreen extends StatefulWidget {
@@ -68,16 +68,15 @@ class _StorageScreenState extends State<StorageScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Storage'),
-      ),
+      appBar: AppBar(title: const Text('Storage')),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 640),
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
+            child:
+                _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null
                     ? _buildError(context)
                     : _buildContent(context, colorScheme),
           ),
@@ -92,7 +91,11 @@ class _StorageScreenState extends State<StorageScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 64, color: Theme.of(context).colorScheme.error),
+          Icon(
+            Icons.error_outline,
+            size: 64,
+            color: Theme.of(context).colorScheme.error,
+          ),
           const SizedBox(height: 16),
           Text(
             'Failed to load storage info',
@@ -103,8 +106,8 @@ class _StorageScreenState extends State<StorageScreen> {
             _error!,
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error,
-                ),
+              color: Theme.of(context).colorScheme.error,
+            ),
           ),
           const SizedBox(height: 24),
           FilledButton.icon(
@@ -122,9 +125,10 @@ class _StorageScreenState extends State<StorageScreen> {
     final freeFraction = _totalBytes > 0 ? _freeBytes / _totalBytes : 0.0;
 
     // Color the bar based on usage percentage.
-    final barColor = usedFraction > 0.9
-        ? colorScheme.error
-        : usedFraction > 0.75
+    final barColor =
+        usedFraction > 0.9
+            ? colorScheme.error
+            : usedFraction > 0.75
             ? Colors.orange
             : colorScheme.primary;
 
@@ -133,18 +137,14 @@ class _StorageScreenState extends State<StorageScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(
-            Icons.storage_rounded,
-            size: 80,
-            color: colorScheme.primary,
-          ),
+          Icon(Icons.storage_rounded, size: 80, color: colorScheme.primary),
           const SizedBox(height: 24),
           Text(
             'Destination Folder',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
           ),
           Text(
             _folder,
@@ -196,9 +196,9 @@ class _StorageScreenState extends State<StorageScreen> {
           Text(
             '${(freeFraction * 100).toStringAsFixed(1)}% available',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.grey),
           ),
           const SizedBox(height: 24),
           Center(
@@ -246,9 +246,9 @@ class _StorageTile extends StatelessWidget {
             ),
             Text(
               value,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
           ],
         ),
