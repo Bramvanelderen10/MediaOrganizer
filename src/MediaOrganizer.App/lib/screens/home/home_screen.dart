@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import '../../di/service_locator.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import '../setup/setup_screen.dart';
@@ -13,9 +14,10 @@ enum _AppMenuAction { storage, forgetShowSeason, resetApiUrl }
 
 /// Main screen with a single button to trigger the organize job.
 class HomeScreen extends StatefulWidget {
-  final String apiUrl;
+  final ApiService api;
+  final StorageService storage;
 
-  const HomeScreen({super.key, required this.apiUrl});
+  const HomeScreen({super.key, required this.api, required this.storage});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -41,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    _api = ApiService(baseUrl: widget.apiUrl);
+    _api = widget.api;
 
     WidgetsBinding.instance.addObserver(this);
     _startHealthPolling();
@@ -254,11 +256,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
 
     if (confirmed == true) {
-      await StorageService().clearApiUrl();
+      await widget.storage.clearApiUrl();
+      unregisterApiService();
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const SetupScreen()));
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => SetupScreen(storage: widget.storage)),
+      );
     }
   }
 
@@ -313,7 +316,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ApiStatusHeader(apiUrl: widget.apiUrl),
+                  ApiStatusHeader(apiUrl: _api.baseUrl),
                   const SizedBox(height: 48),
                   OrganizeButton(
                     isLoading: _isLoading,

@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import '../../di/service_locator.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
 import '../home/home_screen.dart';
 
 /// First-time setup screen where the user enters the API URL.
 class SetupScreen extends StatefulWidget {
-  const SetupScreen({super.key});
+  final StorageService storage;
+
+  const SetupScreen({super.key, required this.storage});
 
   @override
   State<SetupScreen> createState() => _SetupScreenState();
@@ -38,10 +41,15 @@ class _SetupScreenState extends State<SetupScreen> {
     if (!mounted) return;
 
     if (reachable) {
-      await StorageService().setApiUrl(url);
+      await widget.storage.setApiUrl(url);
+      registerApiService(url);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => HomeScreen(apiUrl: url)),
+        MaterialPageRoute(
+          builder:
+              (_) =>
+                  HomeScreen(api: getIt<ApiService>(), storage: widget.storage),
+        ),
       );
     } else {
       setState(() {

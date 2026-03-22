@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'di/service_locator.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/setup/setup_screen.dart';
+import 'services/api_service.dart';
 import 'services/storage_service.dart';
 
 void main() {
+  setupServiceLocator();
   runApp(const MediaOrganizerApp());
 }
 
@@ -39,12 +42,13 @@ class _EntryPoint extends StatefulWidget {
 }
 
 class _EntryPointState extends State<_EntryPoint> {
+  final StorageService _storage = getIt<StorageService>();
   late Future<String?> _urlFuture;
 
   @override
   void initState() {
     super.initState();
-    _urlFuture = StorageService().getApiUrl();
+    _urlFuture = _storage.getApiUrl();
   }
 
   @override
@@ -60,9 +64,10 @@ class _EntryPointState extends State<_EntryPoint> {
 
         final url = snapshot.data;
         if (url != null) {
-          return HomeScreen(apiUrl: url);
+          registerApiService(url);
+          return HomeScreen(api: getIt<ApiService>(), storage: _storage);
         }
-        return const SetupScreen();
+        return SetupScreen(storage: _storage);
       },
     );
   }
