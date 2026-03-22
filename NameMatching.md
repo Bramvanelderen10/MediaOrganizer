@@ -74,20 +74,28 @@ After cleaning, parsing tries these patterns in order.
 
 #### A) SxxExx (highest priority)
 
-Pattern (conceptually): `\bSE?(?<season>\d{1,2})\s*E(?<episode>\d{1,4})\b` (case-insensitive)
+Pattern (conceptually): `\bSE?(?<season>\d{1,2})\s*E(?<episode>\d{1,4})` (case-insensitive)
 
 The `E?` after `S` allows an optional literal `E`, so both `S01E07` and `SE01E07` are matched.
+
+There is no trailing word boundary (`\b`), so the pattern matches even when extra characters are attached after the episode number (e.g. `S03E01v2`, `S01E01SDFDSsndflsndf324`). Version tags like `v2` are also stripped during the cleaning phase, but the lack of a trailing boundary ensures robust matching regardless.
 
 - `Season` and `Episode` come from the match
 - `Title` becomes the cleaned text *before* the match
 
-Example:
+Examples:
 
 ```
 Clean:  Dark Matter S01E07
 Title:  Dark Matter
 Season: 1
 Episode: 7
+
+Clean:  Re Zero S03E01
+Title:  Re Zero
+Season: 3
+Episode: 1
+(original filename: Re Zero S03E01v2.mkv — "v2" stripped during cleaning)
 ```
 
 #### B) SxxDashExx / Sxx space xx (second priority)

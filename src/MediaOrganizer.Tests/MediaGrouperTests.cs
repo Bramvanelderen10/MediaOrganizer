@@ -544,4 +544,40 @@ public class MediaGrouperTests
         Assert.Equal(MediaType.Show, show.Type);
         Assert.Equal("Dark Matter", show.Name);
     }
+
+    [Fact]
+    public void GroupMediaFiles_SxxExxWithVersionSuffix_ParsedCorrectly()
+    {
+        var files = new List<string>
+        {
+            "/tv/Re Zero S03E01v2.mkv",
+            "/tv/Re Zero S03E02.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Contains("Re Zero", show.Name);
+        Assert.Single(show.Seasons);
+        Assert.Equal(3, show.Seasons[0].SeasonNumber);
+        Assert.Equal(2, show.Seasons[0].Episodes.Count);
+    }
+
+    [Fact]
+    public void GroupMediaFiles_SxxExxWithRandomSuffix_ParsedCorrectly()
+    {
+        var files = new List<string>
+        {
+            "/tv/test episodie S01E01SDFDSsndflsndf324.mkv",
+        };
+
+        var result = _sut.GroupMediaFiles(files);
+
+        var show = Assert.Single(result);
+        Assert.Equal(MediaType.Show, show.Type);
+        Assert.Single(show.Seasons);
+        Assert.Equal(1, show.Seasons[0].SeasonNumber);
+        Assert.Equal(1, show.Seasons[0].Episodes[0].EpisodeNumber);
+    }
 }
