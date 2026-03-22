@@ -25,9 +25,10 @@ class LogStreamContainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canToggle = isApiHealthy && !isLogConnecting;
-    final statusText = isLogConnecting
-        ? 'Connecting…'
-        : isLogConnected
+    final statusText =
+        isLogConnecting
+            ? 'Connecting…'
+            : isLogConnected
             ? 'Connected'
             : 'Disconnected';
 
@@ -49,10 +50,11 @@ class LogStreamContainer extends StatelessWidget {
                 Text(
                   statusText,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: isLogConnected
+                    color:
+                        isLogConnected
                             ? Colors.green
                             : Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                  ),
                 ),
                 const Spacer(),
                 if (isLogConnecting)
@@ -63,15 +65,16 @@ class LogStreamContainer extends StatelessWidget {
                   ),
                 IconButton(
                   tooltip: isLogConnected ? 'Disconnect logs' : 'Connect logs',
-                  onPressed: canToggle
-                      ? () {
-                          if (isLogConnected) {
-                            onDisconnect();
-                          } else {
-                            onConnect();
+                  onPressed:
+                      canToggle
+                          ? () {
+                            if (isLogConnected) {
+                              onDisconnect();
+                            } else {
+                              onConnect();
+                            }
                           }
-                        }
-                      : null,
+                          : null,
                   icon: Icon(
                     isLogConnected
                         ? Icons.stop_circle_outlined
@@ -88,40 +91,42 @@ class LogStreamContainer extends StatelessWidget {
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: logLines.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No logs yet…',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                        ),
-                      ),
-                    )
-                  : Scrollbar(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: logLines.length,
-                        itemBuilder: (ctx, i) => Text(
-                          logLines[i],
-                          style: const TextStyle(
-                            color: Colors.white,
+              child:
+                  logLines.isEmpty
+                      ? const Center(
+                        child: Text(
+                          'No logs yet…',
+                          style: TextStyle(
+                            color: Colors.white70,
                             fontFamily: 'monospace',
                             fontSize: 12,
-                            height: 1.25,
                           ),
                         ),
+                      )
+                      : Scrollbar(
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemCount: logLines.length,
+                          itemBuilder:
+                              (ctx, i) => Text(
+                                logLines[i],
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontFamily: 'monospace',
+                                  fontSize: 12,
+                                  height: 1.25,
+                                ),
+                              ),
+                        ),
                       ),
-                    ),
             ),
             if (logError != null) ...[
               const SizedBox(height: 8),
               Text(
                 logError!,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                  color: Theme.of(context).colorScheme.error,
+                ),
               ),
             ],
           ],

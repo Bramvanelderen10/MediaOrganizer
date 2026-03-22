@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
-import 'home_screen.dart';
+import 'home/home_screen.dart';
 
 /// First-time setup screen where the user enters the API URL.
 class SetupScreen extends StatefulWidget {
@@ -77,9 +77,9 @@ class _SetupScreenState extends State<SetupScreen> {
                 Text(
                   'Enter the address of your MediaOrganizer API to get started.',
                   textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
                 ),
                 const SizedBox(height: 32),
                 TextFormField(
@@ -116,19 +116,20 @@ class _SetupScreenState extends State<SetupScreen> {
                   height: 48,
                   child: FilledButton(
                     onPressed: _isTesting ? null : _connect,
-                    child: _isTesting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                    child:
+                        _isTesting
+                            ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                            : const Text(
+                              'Connect',
+                              style: TextStyle(fontSize: 16),
                             ),
-                          )
-                        : const Text(
-                            'Connect',
-                            style: TextStyle(fontSize: 16),
-                          ),
                   ),
                 ),
               ],
