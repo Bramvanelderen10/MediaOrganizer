@@ -1,22 +1,21 @@
 # MediaOrganizer
 
-.NET 10 worker service that automatically organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). Runs on a cron schedule and exposes HTTP endpoints for on-demand triggering, restoring files, and health checks. Uses SQLite to track move history for idempotency and restore capability.
+.NET 10 minimal API service that automatically organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). Exposes HTTP endpoints for on-demand triggering, file management, history management, and health checks. Uses SQLite to track move history for idempotency. Includes a Flutter companion app.
 
 ## Project Type
-- Worker Service with ASP.NET Core Minimal API
-- Scheduled background tasks (cron-based)
-- SQLite move-history database for idempotent moves and restore
+- ASP.NET Core Minimal API
+- SQLite move-history database for idempotent moves
 - Docker deployment ready
+- Flutter companion app (mobile/desktop/web)
 
 ## Technology Stack
 - .NET 10
 - ASP.NET Core Minimal API (port 45263)
-- BackgroundService for cron scheduling
 - Entity Framework Core with SQLite (move history)
 - Microsoft.AspNetCore.OpenApi (built-in OpenAPI document generation)
 - Scalar.AspNetCore (interactive API documentation UI)
-- NCrontab (cron scheduling)
-- Docker (multi-stage build)
+- NCrontab (cron expression parsing)
+- Docker (multi-stage build with gosu for privilege de-escalation)
 
 ## Configuration (`MediaOrganizer` section)
 
@@ -31,14 +30,42 @@
 
 ## API Endpoints
 
+### System
+
 | Method | Path | Description |
 |---|---|---|
-| `GET /` | | API overview with available endpoints and schedule |
-| `GET /health` | | Health check with timestamp |
-| `POST /trigger-job` | | Trigger organize pipeline immediately (optional `folderPath` body) |
-| `POST /restore-folder-structure` | | Revert all tracked moves back to original locations |
-| `GET /openapi/v1.json` | | OpenAPI spec |
-| `GET /scalar/v1` | | Scalar interactive API documentation |
+| `GET` | `/` | API overview with available endpoints |
+| `GET` | `/health` | Health check with timestamp |
+| `GET` | `/storage-info` | Disk storage info (total, used, free bytes) for the destination folder |
+| `GET` | `/logs/stream` | Live log streaming via Server-Sent Events (query: `?tail=200`) |
+| `GET` | `/openapi/v1.json` | OpenAPI spec |
+| `GET` | `/scalar/v1` | Scalar interactive API documentation |
+
+### Job execution
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/trigger-job` | Trigger organize pipeline immediately (optional `folderPath` body) |
+
+### File management
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/browse` | List directory contents under the source folder (query: `?path=sub/dir`) |
+| `POST` | `/rename` | Rename a file or directory under the source folder |
+| `POST` | `/move` | Move a file or directory to a different folder under the source root |
+| `POST` | `/delete` | Delete one or more files or directories under the source folder |
+
+### History management
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/library` | Organized media library structure built from move history |
+| `POST` | `/forget-movie` | Delete move history entries for a specific movie |
+| `POST` | `/forget-show` | Delete all move history entries for a show (all seasons) |
+| `POST` | `/forget-show-season` | Delete move history entries for a specific show season |
+| `POST` | `/forget-episode` | Delete the move history entry for a specific episode |
+| `POST` | `/forget-batch` | Delete move history entries for multiple items at once |
 
 ## Architecture
 
@@ -46,10 +73,8 @@ All services are registered as **singletons** via DI. Key components:
 
 | Namespace | Class | Role |
 |---|---|---|
-| Orchestration | `ScheduledJobService` | BackgroundService; polls every minute, triggers on cron match |
-| Orchestration | `JobExecutor` | Wraps `MediaFileOrganizer`, logging |
+| Orchestration | `JobExecutor` | Wraps `MediaFileOrganizer` with logging |
 | Orchestration | `MediaFileOrganizer` | Main orchestrator for the organize flow |
-| Orchestration | `MediaFileRestorer` | Orchestrator for restoring files to original locations |
 | Discovery | `VideoFileFinder` | Recursive file discovery, filters by extension |
 | Parsing | `MediaGrouper` | Parses filenames, groups by title similarity (Levenshtein ≥ 0.80) |
 | Planning | `MovePlanBuilder` | Builds move plan against history DB, computes destinations |
@@ -57,6 +82,8 @@ All services are registered as **singletons** via DI. Key components:
 | Execution | `SubtitleMover` | Moves companion subtitles alongside their video |
 | Cleanup | `DirectoryCleaner` | Removes empty/leftover directories after moves |
 | History | `MoveHistoryStore` | CRUD on SQLite move history (via `IDbContextFactory`) |
+| Logging | `LogBroadcaster` | Pub/sub broker for live log streaming via SSE |
+| Logging | `BroadcastLoggerProvider` | Custom `ILoggerProvider` that publishes logs to `LogBroadcaster` |
 | Helpers | `IFileSystem` / `PhysicalFileSystem` | File system abstraction for testability |
 | Helpers | `PathHelpers` | Unique path generation (`name (1).ext`, `name (2).ext`, ...) |
 
@@ -71,7 +98,7 @@ All services are registered as **singletons** via DI. Key components:
 7. **Execute moves** — `VideoMover` moves files, ensures unique paths, updates history records.
 8. **Move subtitles** — `SubtitleMover` finds and moves subtitle files alongside their video.
 9. **Cleanup directories** — `DirectoryCleaner` removes directory subtrees that no longer contain media.
-10. **Return summary** — total files, moved count, skipped count.
+10. **Return summary** — total files, moved count, skipped count, subtitles moved, leftover files removed.
 
 ## Filename Parsing Algorithm (`MediaGrouper`)
 
@@ -81,8 +108,9 @@ All services are registered as **singletons** via DI. Key components:
 
 ### Episode Detection (in priority order)
 1. **SxxExx regex** — if matched, extract season + episode, title = text before the match. If title is empty, fall back to parent folder name.
-2. **Trailing episode number** (`\s+(?<episode>\d{1,4})\s*$`) — episode number from end, title = text before it.
-3. **No match** — no episode info, title = full cleaned name.
+2. **SxxDashExx / Sxx space xx** — season–episode pairs separated by a dash or whitespace without the `E` prefix on the episode number.
+3. **Trailing episode number** (`\s+(?<episode>\d{1,4})\s*$`) — episode number from end, title = text before it.
+4. **No match** — no episode info, title = full cleaned name.
 
 Parent folder name is also parsed as a fallback source for the pattern. If the immediate parent is a `Season XX` folder, the grandparent folder name is used instead.
 
@@ -128,21 +156,13 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 ## Move History & Idempotency (`MoveHistoryStore`)
 
 - Each move is tracked as a `MoveHistoryEntry` with `UniqueKey`, `OriginalPath`, `TargetPath`, `IsMoved`, `MovedAt`.
-- **UniqueKey**: for movies = media name; for shows = `{Name}|{Season}|{Episode}`.
+- **UniqueKey**: for movies = media name; for shows = `{Name}_Season{NN}_Episode{EE}`.
 - Before creating a plan entry, the builder checks the latest history record by `UniqueKey`:
 	- Same destination + `IsMoved = true` → skip (already done).
 	- Same destination + `IsMoved = false` → already pending, no action.
 	- Different destination → create new record.
 	- No record → create new record.
 - Database indexes on `UniqueKey`, `IsMoved`, and composite `(UniqueKey, TargetPath)`.
-
-## Restore Flow (`MediaFileRestorer`)
-
-1. Query all entries with `IsMoved = true` (ordered by descending ID).
-2. For each entry: skip if target file no longer exists or original path already occupied.
-3. Move file from `TargetPath` back to `OriginalPath`.
-4. Set `IsMoved = false` in database.
-5. Return summary with restored/skipped/failed counts.
 
 ## Subtitle Handling (`SubtitleMover`)
 
@@ -177,14 +197,14 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 | DI / Singleton | All services registered as singletons |
 | `IDbContextFactory` | Thread-safe EF Core usage from singletons |
 | `IFileSystem` abstraction | All file operations go through `IFileSystem` for testability |
-| BackgroundService | `ScheduledJobService` for cron polling loop (1-minute interval) |
 | Record types | `ParsedVideoFile`, `Episode`, `MovePlanItem`, `MovedFileInfo`, summaries |
 | Levenshtein similarity | Title grouping with 80% threshold |
 | Idempotent moves | History DB tracks `UniqueKey` + `TargetPath` to skip already-moved files |
+| SSE log streaming | `LogBroadcaster` + `BroadcastLoggerProvider` for live log delivery |
 
 ## Testing
 
 Tests in `src/MediaOrganizer.Tests/` mock `IFileSystem` for isolated unit testing:
-- `DirectoryCleanerTests`, `MediaFileRestorerTests`, `MediaGrouperTests`
+- `DirectoryCleanerTests`, `MediaGrouperTests`
 - `MovePlanBuilderTests`, `PathHelpersTests`, `SubtitleMoverTests`
 - `VideoFileFinderTests`, `VideoMoverTests`

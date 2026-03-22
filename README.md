@@ -18,8 +18,13 @@ It supports on-demand API triggers, subtitle companion moves, source cleanup, an
 - Subtitle relocation next to moved video files
 - Idempotent planning with SQLite move history
 - Cleanup of empty/leftover source directories
+- File management API (browse, rename, move, delete)
+- Move history management (forget movies, shows, seasons, episodes)
+- Organized media library view
+- Live log streaming via Server-Sent Events (SSE)
 - OpenAPI document + Scalar docs UI
 - Docker-ready deployment
+- Flutter companion app (mobile/desktop/web)
 
 ## Quick start (Docker)
 
@@ -67,15 +72,44 @@ curl http://localhost:45263/health
 
 ## API endpoints
 
+### System
+
 | Method | Path | Description |
 |---|---|---|
 | GET | `/` | API overview |
-| GET | `/health` | Health check |
-| GET | `/storage-info` | Disk storage info for the destination folder |
-| POST | `/trigger-job` | Trigger organize job immediately |
-| POST | `/forget-show-season` | Delete move history for a show/season |
+| GET | `/health` | Health check with timestamp |
+| GET | `/storage-info` | Disk storage info (total, used, free bytes) for the destination folder |
+| GET | `/logs/stream` | Live log streaming via SSE (query: `?tail=200`) |
 | GET | `/openapi/v1.json` | OpenAPI spec |
-| GET | `/scalar/v1` | Scalar API UI |
+| GET | `/scalar/v1` | Scalar API docs UI |
+
+### Job execution
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/trigger-job` | Trigger organize job immediately (optional `folderPath` body) |
+
+### File management
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/browse` | List directory contents under the source folder (query: `?path=sub/dir`) |
+| POST | `/rename` | Rename a file or directory under the source folder |
+| POST | `/move` | Move a file or directory to a different folder under the source root |
+| POST | `/delete` | Delete one or more files or directories under the source folder |
+
+### History management
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/library` | Organized media library structure built from move history |
+| POST | `/forget-movie` | Delete move history entries for a specific movie |
+| POST | `/forget-show` | Delete all move history entries for a show (all seasons) |
+| POST | `/forget-show-season` | Delete move history entries for a specific show season |
+| POST | `/forget-episode` | Delete the move history entry for a specific episode |
+| POST | `/forget-batch` | Delete move history entries for multiple items at once |
+
+### Examples
 
 Trigger now:
 
@@ -95,6 +129,19 @@ Storage info:
 
 ```bash
 curl http://localhost:45263/storage-info
+```
+
+Browse source folder:
+
+```bash
+curl http://localhost:45263/browse
+curl "http://localhost:45263/browse?path=subfolder"
+```
+
+Library overview:
+
+```bash
+curl http://localhost:45263/library
 ```
 
 ## Organize behavior (summary)
@@ -188,9 +235,11 @@ dotnet build src/MediaOrganizer/MediaOrganizer.csproj
 
 ```text
 src/
-  MediaOrganizer/          # Worker + minimal API
+  MediaOrganizer/          # Backend service (minimal API)
   MediaOrganizer.Tests/    # Unit tests
-  MediaOrganizer.App/      # Flutter app (mobile/desktop/web client)
+  MediaOrganizer.App/      # Flutter companion app (mobile/desktop/web client)
+tools/
+  mcreate/                 # CLI tool to recreate folder structures with empty files
 ```
 
 ## Troubleshooting
