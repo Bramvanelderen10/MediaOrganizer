@@ -12,6 +12,7 @@ using MediaOrganizer.Logging;
 using MediaOrganizer.Orchestration;
 using MediaOrganizer.Parsing;
 using MediaOrganizer.Planning;
+using MediaOrganizer.Torrents;
 
 using Scalar.AspNetCore;
 
@@ -42,6 +43,11 @@ builder.Services.AddDbContextFactory<MoveHistoryDbContext>(options =>
 builder.Services.AddSingleton<MoveHistoryStore>();
 builder.Services.AddSingleton<MediaFileOrganizer>();
 
+// Torrents: accepts .torrent uploads and hands them to qBittorrent to download.
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<ITorrentClient, QbittorrentClient>();
+builder.Services.AddSingleton<TorrentService>();
+
 // Live log streaming (SSE)
 builder.Services.AddSingleton<LogBroadcaster>();
 builder.Services.AddSingleton<ILoggerProvider, BroadcastLoggerProvider>();
@@ -60,5 +66,6 @@ app.MapJobEndpoints();
 app.MapHistoryEndpoints();
 app.MapFileManagementEndpoints();
 app.MapSystemEndpoints();
+app.MapTorrentEndpoints();
 
 app.Run();

@@ -9,6 +9,15 @@ services:
       - TZ=Europe/Amsterdam
       - MediaOrganizer__SourceFolder=/media
       - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
+      # qBittorrent integration: lets POST /torrents/add hand a .torrent file to qBittorrent.
+      # "qbittorrent" resolves through the shared local-network below.
+      - MediaOrganizer__Qbittorrent__Url=http://qbittorrent:8080
+      - MediaOrganizer__Qbittorrent__Username=admin
+      # Set the permanent WebUI password here after the first login (see README).
+      - MediaOrganizer__Qbittorrent__Password=change-me
+      # Must be a path qBittorrent can see. /media is the same bind mount in both services,
+      # so downloads land in the folder that the organizer scans.
+      - MediaOrganizer__Qbittorrent__DownloadFolder=/media
       # Match these to the UID/GID of the host user that owns your media files.
       # This ensures moved files are not owned by root, preventing SMB lock-out.
       # Run `id` on your host to find the right values.
@@ -20,11 +29,38 @@ services:
       - /path/to/your/videos:/media
       # Persist the SQLite move-history database on the host
       - media-organizer-data:/data
+    depends_on:
+      - qbittorrent
+    networks:
+      - local-network
+
+  # Optional: remove this service if you already run qBittorrent elsewhere.
+  # If you keep it, point MediaOrganizer__Qbittorrent__Url at wherever qBittorrent runs.
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Amsterdam
+      # WEBUI_PORT must match both sides of the port mapping below (CSRF protection).
+      - WEBUI_PORT=8080
+      - TORRENTING_PORT=6881
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      # Keep this identical to the media-organizer mount so save paths line up.
+      - /path/to/your/videos:/media
+      - qbittorrent-config:/config
+    restart: unless-stopped
     networks:
       - local-network
 
 volumes:
   media-organizer-data:
+  qbittorrent-config:
 
 
 networks:

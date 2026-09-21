@@ -24,6 +24,7 @@ public static class SystemEndpoints
                 delete = "POST /delete",
                 storageInfo = "GET /storage-info",
                 library = "GET /library",
+                addTorrent = "POST /torrents/add",
                 health = "GET /health",
                 streamLogs = "GET /logs/stream",
                 openApiSpec = "GET /openapi/v1.json",

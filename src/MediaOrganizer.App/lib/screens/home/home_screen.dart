@@ -3,10 +3,12 @@ import 'dart:async';
 import '../../di/service_locator.dart';
 import '../../services/api_service.dart';
 import '../../services/storage_service.dart';
+import '../../services/torrent_intent_service.dart';
 import '../setup/setup_screen.dart';
 import '../file_browser/file_browser_screen.dart';
 import '../library/library_screen.dart';
 import '../storage/storage_screen.dart';
+import '../torrent/torrent_confirm_dialog.dart';
 import 'widgets/api_status_header.dart';
 import 'widgets/forget_season_dialog.dart';
 import 'widgets/log_stream_container.dart';
@@ -25,7 +27,15 @@ class HomeScreen extends StatefulWidget {
   final ApiService api;
   final StorageService storage;
 
-  const HomeScreen({super.key, required this.api, required this.storage});
+  /// Delivers `.torrent` files opened with the app; may be null in tests.
+  final TorrentIntentService? torrentIntents;
+
+  const HomeScreen({
+    super.key,
+    required this.api,
+    required this.storage,
+    this.torrentIntents,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -34,6 +44,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final ApiService _api;
   bool _isLoading = false;
+  bool _isTorrentDialogVisible = false;
 
   Timer? _healthTimer;
   bool _isApiHealthy = false;
@@ -55,15 +66,44 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addObserver(this);
     _startHealthPolling();
+    widget.torrentIntents?.setHandler(_handleIncomingTorrent);
   }
 
   @override
   void dispose() {
+    widget.torrentIntents?.clearHandler();
     _stopHealthPolling();
     _disconnectLogs(updateUi: false);
     _logScrollController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  /// Shows the confirmation dialog for a `.torrent` file opened with the app.
+  void _handleIncomingTorrent(String filePath) {
+    if (!mounted || _isTorrentDialogVisible) {
+      return;
+    }
+
+    _isTorrentDialogVisible = true;
+
+    // Defer to the next frame so the dialog is never shown during a build.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        _isTorrentDialogVisible = false;
+        return;
+      }
+
+      try {
+        await TorrentConfirmDialog.show(
+          context,
+          api: _api,
+          filePath: filePath,
+        );
+      } finally {
+        _isTorrentDialogVisible = false;
+      }
+    });
   }
 
   @override

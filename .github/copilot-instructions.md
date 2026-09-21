@@ -28,6 +28,13 @@
 | `CronSchedule` | `string` | `"0 5 * * *"` (daily 5 AM) | NCrontab cron expression |
 | `VideoExtensions` | `string[]` | `.mp4,.mkv,.avi,.mov,.wmv,.m4v,.webm,.ts,.mpg,.mpeg` | Allowed video file extensions |
 | `SubtitleExtensions` | `string[]` | `.srt,.sub,.ass,.ssa,.vtt,.idx` | Allowed subtitle file extensions |
+| `Qbittorrent:Url` | `string?` | `null` | qBittorrent WebUI base URL; torrent endpoints return 503 when unset |
+| `Qbittorrent:Username` | `string?` | `null` | qBittorrent WebUI username |
+| `Qbittorrent:Password` | `string?` | `null` | qBittorrent WebUI password |
+| `Qbittorrent:DownloadFolder` | `string?` | `null` | Save path sent to qBittorrent (falls back to `SourceFolder`) |
+| `Qbittorrent:Category` | `string?` | `null` | Optional category for added torrents |
+| `Qbittorrent:Tags` | `string?` | `null` | Optional comma-separated tags for added torrents |
+| `Qbittorrent:RequestTimeoutSeconds` | `int` | `60` | Timeout for qBittorrent HTTP calls |
 
 ## API Endpoints
 
@@ -36,6 +43,7 @@
 | `GET /` | | API overview with available endpoints and schedule |
 | `GET /health` | | Health check with timestamp |
 | `POST /trigger-job` | | Trigger organize pipeline immediately (optional `folderPath` body) |
+| `POST /torrents/add` | | Upload a `.torrent` file (multipart form field `file`) and start downloading it via qBittorrent; optional `folderPath` form field |
 | `POST /restore-folder-structure` | | Revert all tracked moves back to original locations |
 | `GET /openapi/v1.json` | | OpenAPI spec |
 | `GET /scalar/v1` | | Scalar interactive API documentation |
@@ -58,6 +66,8 @@ All services are registered as **singletons** via DI. Key components:
 | Cleanup | `DirectoryCleaner` | Removes empty/leftover directories after moves |
 | History | `MoveHistoryStore` | CRUD on SQLite move history (via `IDbContextFactory`) |
 | Helpers | `IFileSystem` / `PhysicalFileSystem` | File system abstraction for testability |
+| Torrents | `TorrentService` | Validates uploaded `.torrent` files and resolves the download folder |
+| Torrents | `QbittorrentClient` | qBittorrent WebUI API v2 client (login + `torrents/add`) |
 | Helpers | `PathHelpers` | Unique path generation (`name (1).ext`, `name (2).ext`, ...) |
 
 ## Organize Flow (`MediaFileOrganizer`)

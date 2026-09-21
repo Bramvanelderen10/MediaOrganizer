@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'di/service_locator.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/setup/setup_screen.dart';
 import 'services/api_service.dart';
 import 'services/storage_service.dart';
+import 'services/torrent_intent_service.dart';
 
 void main() {
   setupServiceLocator();
@@ -43,12 +46,20 @@ class _EntryPoint extends StatefulWidget {
 
 class _EntryPointState extends State<_EntryPoint> {
   final StorageService _storage = getIt<StorageService>();
+  final TorrentIntentService _torrentIntents = TorrentIntentService();
   late Future<String?> _urlFuture;
 
   @override
   void initState() {
     super.initState();
     _urlFuture = _storage.getApiUrl();
+    unawaited(_torrentIntents.start());
+  }
+
+  @override
+  void dispose() {
+    unawaited(_torrentIntents.dispose());
+    super.dispose();
   }
 
   @override
@@ -65,7 +76,11 @@ class _EntryPointState extends State<_EntryPoint> {
         final url = snapshot.data;
         if (url != null) {
           registerApiService(url);
-          return HomeScreen(api: getIt<ApiService>(), storage: _storage);
+          return HomeScreen(
+            api: getIt<ApiService>(),
+            storage: _storage,
+            torrentIntents: _torrentIntents,
+          );
         }
         return SetupScreen(storage: _storage);
       },

@@ -19,5 +19,7 @@ public class MediaOrganizerOptions
     [
         ".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"
     ];
+
+    public QbittorrentOptions Qbittorrent { get; set; } = new();
 }
 

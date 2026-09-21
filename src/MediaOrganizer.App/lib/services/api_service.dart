@@ -209,6 +209,33 @@ class ApiService {
     }
     throw ApiException(response.statusCode, response.body);
   }
+
+  /// Uploads a `.torrent` file via POST /torrents/add and starts the download
+  /// in qBittorrent.
+  ///
+  /// [filePath] must be a local path to the .torrent file. Optionally pass
+  /// [folderPath] to override the server's configured download folder.
+  /// Returns a map with keys: message, fileName, savePath, sizeBytes, executedAt.
+  Future<Map<String, dynamic>> addTorrent({
+    required String filePath,
+    String? folderPath,
+  }) async {
+    final request = http.MultipartRequest('POST', _uri('/torrents/add'));
+    request.files.add(await http.MultipartFile.fromPath('file', filePath));
+
+    if (folderPath != null && folderPath.isNotEmpty) {
+      request.fields['folderPath'] = folderPath;
+    }
+
+    final streamed = await request.send();
+    final response = await http.Response.fromStream(streamed);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiException(response.statusCode, response.body);
+  }
 }
 
 class ApiException implements Exception {
