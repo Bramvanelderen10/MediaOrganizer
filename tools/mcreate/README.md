@@ -27,13 +27,13 @@ The package is written to `tools/mcreate/nupkg`.
 ## Install globally
 
 ```bash
-dotnet tool install --global --add-source /home/bramve/Repos/MediaOrganizer/tools/mcreate/nupkg mcreate
+dotnet tool install --global --add-source tools/mcreate/nupkg mcreate
 ```
 
 ## Update after changes
 
 ```bash
-dotnet tool update --global --add-source /home/bramve/Repos/MediaOrganizer/tools/mcreate/nupkg mcreate
+dotnet tool update --global --add-source tools/mcreate/nupkg mcreate
 ```
 
 ## Run after install

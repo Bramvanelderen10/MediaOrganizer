@@ -7,7 +7,10 @@ It lets you:
 - Check API health continuously
 - Trigger an organize run
 - Open or share a `.torrent` file with the app and confirm it before downloading
-- Forget move history for a specific show season
+- Browse, rename, move, and delete files in the source folder
+- View and manage the organized media library
+- Forget move history (movies, shows, seasons, episodes, or batch)
+- View disk storage usage
 - View live server logs through SSE (`/logs/stream`)
 
 ## Requirements
@@ -51,11 +54,23 @@ The app stores this value in local preferences. You can clear it via **Reset API
 
 ## Backend endpoints used
 
-- `GET /health`
-- `POST /trigger-job`
-- `POST /torrents/add` (multipart upload of a `.torrent` file)
-- `POST /forget-show-season`
-- `GET /logs/stream?tail=...`
+| Method | Path | Description |
+|---|---|---|
+| GET | `/health` | Connectivity check |
+| GET | `/storage-info` | Disk storage info |
+| GET | `/logs/stream?tail=...` | Live log streaming via SSE |
+| GET | `/library` | Organized media library structure |
+| GET | `/browse` | Source folder directory listing |
+| POST | `/trigger-job` | Trigger organize job |
+| POST | `/torrents/add` | Upload a `.torrent` file and start the download |
+| POST | `/rename` | Rename file or directory |
+| POST | `/move` | Move file or directory |
+| POST | `/delete` | Delete files or directories |
+| POST | `/forget-movie` | Forget movie history |
+| POST | `/forget-show` | Forget all history for a show |
+| POST | `/forget-show-season` | Forget history for a show season |
+| POST | `/forget-episode` | Forget history for a specific episode |
+| POST | `/forget-batch` | Forget history for multiple items |
 
 ## Notes
 

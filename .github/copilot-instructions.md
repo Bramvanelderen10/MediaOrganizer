@@ -1,12 +1,13 @@
 # MediaOrganizer
 
-.NET 10 service that organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). The organize job runs **on demand only** (`POST /trigger-job`) — there is no scheduler. It also exposes HTTP endpoints for browsing/editing source files, managing move history, uploading `.torrent` files, and health checks. Uses SQLite to track move history for idempotency.
+.NET 10 minimal API service that organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). The organize job runs **on demand only** (`POST /trigger-job`) — there is no scheduler. Exposes HTTP endpoints for on-demand triggering, file management, history management, torrent uploading, and health checks. Uses SQLite to track move history for idempotency. Includes a Flutter companion app.
 
 ## Project Type
 - ASP.NET Core Minimal API with a hosted Kestrel listener
 - On-demand organize job (no scheduler/cron)
 - SQLite move-history database for idempotent moves
 - Docker deployment ready
+- Flutter companion app (mobile/desktop/web)
 
 ## Technology Stack
 - .NET 10
@@ -15,7 +16,7 @@
 - Microsoft.AspNetCore.OpenApi (built-in OpenAPI document generation)
 - Scalar.AspNetCore (interactive API documentation UI)
 - IHttpClientFactory / HttpClient (qBittorrent WebUI integration)
-- Docker (multi-stage build)
+- Docker (multi-stage build with gosu for privilege de-escalation)
 
 ## Configuration (`MediaOrganizer` section)
 
@@ -36,26 +37,48 @@
 
 ## API Endpoints
 
+### System
+
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/` | API overview with the available endpoint list |
+| `GET` | `/` | API overview with available endpoints |
 | `GET` | `/health` | Health check with timestamp |
-| `GET` | `/storage-info` | Disk total/used/free bytes for the destination (or source) folder |
-| `GET` | `/logs/stream` | Live application logs as Server-Sent Events (`?tail=200`) |
-| `POST` | `/trigger-job` | Trigger the organize pipeline immediately (optional `folderPath` body) |
-| `POST` | `/torrents/add` | Upload a `.torrent` file (multipart form field `file`) and start downloading it via qBittorrent; optional `folderPath` form field |
-| `GET` | `/library` | Organized library derived from move history |
-| `GET` | `/browse` | List directory contents under the source folder (`?path=sub/dir`) |
-| `POST` | `/rename` | Rename a file/directory under the source folder |
-| `POST` | `/move` | Move a file/directory to another folder under the source root |
-| `POST` | `/delete` | Delete one or more paths under the source folder |
-| `POST` | `/forget-movie` | Delete move-history for a movie |
-| `POST` | `/forget-show` | Delete all move-history for a show |
-| `POST` | `/forget-show-season` | Delete move-history for a show season |
-| `POST` | `/forget-episode` | Delete move-history for a single episode |
-| `POST` | `/forget-batch` | Delete move-history for multiple items at once |
+| `GET` | `/storage-info` | Disk storage info (total, used, free bytes) for the destination folder |
+| `GET` | `/logs/stream` | Live log streaming via Server-Sent Events (query: `?tail=200`) |
 | `GET` | `/openapi/v1.json` | OpenAPI spec |
 | `GET` | `/scalar/v1` | Scalar interactive API documentation |
+
+### Job execution
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/trigger-job` | Trigger organize pipeline immediately (optional `folderPath` body) |
+
+### Torrents
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/torrents/add` | Upload a `.torrent` file (multipart field `file`) and start downloading it via qBittorrent (optional `folderPath` form field). Does not trigger the organize job |
+
+### File management
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/browse` | List directory contents under the source folder (query: `?path=sub/dir`) |
+| `POST` | `/rename` | Rename a file or directory under the source folder |
+| `POST` | `/move` | Move a file or directory to a different folder under the source root |
+| `POST` | `/delete` | Delete one or more files or directories under the source folder |
+
+### History management
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/library` | Organized media library structure built from move history |
+| `POST` | `/forget-movie` | Delete move history entries for a specific movie |
+| `POST` | `/forget-show` | Delete all move history entries for a show (all seasons) |
+| `POST` | `/forget-show-season` | Delete move history entries for a specific show season |
+| `POST` | `/forget-episode` | Delete the move history entry for a specific episode |
+| `POST` | `/forget-batch` | Delete move history entries for multiple items at once |
 
 ## Architecture
 
@@ -63,7 +86,7 @@ All services are registered as **singletons** via DI. Key components:
 
 | Namespace | Class | Role |
 |---|---|---|
-| Orchestration | `JobExecutor` | Wraps `MediaFileOrganizer`, logging |
+| Orchestration | `JobExecutor` | Wraps `MediaFileOrganizer` with logging |
 | Orchestration | `MediaFileOrganizer` | Main orchestrator for the organize flow |
 | Discovery | `VideoFileFinder` | Recursive file discovery, filters by extension |
 | Parsing | `MediaGrouper` | Parses filenames, groups by title similarity (Levenshtein ≥ 0.80) |
@@ -72,6 +95,8 @@ All services are registered as **singletons** via DI. Key components:
 | Execution | `SubtitleMover` | Moves companion subtitles alongside their video |
 | Cleanup | `DirectoryCleaner` | Removes empty/leftover directories after moves |
 | History | `MoveHistoryStore` | CRUD on SQLite move history (via `IDbContextFactory`) |
+| Logging | `LogBroadcaster` | Pub/sub broker for live log streaming via SSE |
+| Logging | `BroadcastLoggerProvider` | Custom `ILoggerProvider` that publishes logs to `LogBroadcaster` |
 | Helpers | `IFileSystem` / `PhysicalFileSystem` | File system abstraction for testability |
 | Torrents | `TorrentService` | Validates uploaded `.torrent` files and resolves the download folder |
 | Torrents | `QbittorrentClient` | qBittorrent WebUI API v2 client (login + `torrents/add`) |
@@ -88,7 +113,7 @@ All services are registered as **singletons** via DI. Key components:
 7. **Execute moves** — `VideoMover` moves files, ensures unique paths, updates history records.
 8. **Move subtitles** — `SubtitleMover` finds and moves subtitle files alongside their video.
 9. **Cleanup directories** — `DirectoryCleaner` removes directory subtrees that no longer contain media.
-10. **Return summary** — total files, moved count, skipped count.
+10. **Return summary** — total files, moved count, skipped count, subtitles moved, leftover files removed.
 
 ## Filename Parsing Algorithm (`MediaGrouper`)
 
@@ -98,8 +123,9 @@ All services are registered as **singletons** via DI. Key components:
 
 ### Episode Detection (in priority order)
 1. **SxxExx regex** — if matched, extract season + episode, title = text before the match. If title is empty, fall back to parent folder name.
-2. **Trailing episode number** (`\s+(?<episode>\d{1,4})\s*$`) — episode number from end, title = text before it.
-3. **No match** — no episode info, title = full cleaned name.
+2. **SxxDashExx / Sxx space xx** — season–episode pairs separated by a dash or whitespace without the `E` prefix on the episode number.
+3. **Trailing episode number** (`\s+(?<episode>\d{1,4})\s*$`) — episode number from end, title = text before it.
+4. **No match** — no episode info, title = full cleaned name.
 
 Parent folder name is also parsed as a fallback source for the pattern. If the immediate parent is a `Season XX` folder, the grandparent folder name is used instead.
 
@@ -145,7 +171,7 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 ## Move History & Idempotency (`MoveHistoryStore`)
 
 - Each move is tracked as a `MoveHistoryEntry` with `UniqueKey`, `OriginalFilePath`, `TargetFilePath`, `MoveDateTime`, `IsMoved`.
-- **UniqueKey**: for movies = media name; for shows = `{Name}_Season{NN}_Episode{NN}`.
+- **UniqueKey**: for movies = media name; for shows = `{Name}_Season{NN}_Episode{EE}`.
 - Before creating a plan entry, the builder checks the latest history record by `UniqueKey`:
 	- Same destination + `IsMoved = true` → skip (already done).
 	- Same destination + `IsMoved = false` → already pending, no action.
@@ -192,6 +218,7 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 | Record types | `ParsedVideoFile`, `Episode`, `MovePlanItem`, `MovedFileInfo`, summaries |
 | Levenshtein similarity | Title grouping with 80% threshold |
 | Idempotent moves | History DB tracks `UniqueKey` + `TargetPath` to skip already-moved files |
+| SSE log streaming | `LogBroadcaster` + `BroadcastLoggerProvider` for live log delivery |
 
 ## Testing
 
