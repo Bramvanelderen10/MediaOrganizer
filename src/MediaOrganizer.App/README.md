@@ -6,7 +6,8 @@ It lets you:
 - Configure and persist the API URL
 - Check API health continuously
 - Trigger an organize run
-- Open or share a `.torrent` file with the app and confirm it before downloading
+- Open or share a `.torrent` file or magnet link with the app and confirm it before downloading
+- View all torrents with live download progress
 - Browse, rename, move, and delete files in the source folder
 - View and manage the organized media library
 - Forget move history (movies, shows, seasons, episodes, or batch)
@@ -28,21 +29,40 @@ From [src/MediaOrganizer.App](src/MediaOrganizer.App):
 2. Run the app
 	- `flutter run`
 
-## Opening torrent files
+## Opening torrents
 
-Android registers the app for `application/x-bittorrent` and `application/octet-stream`
-files, so opening a `.torrent` from a file manager or the browser download notification
-offers **Media Organizer** in the "Open with" list. Sharing a `.torrent` file to the app
-works too.
+Android registers the app for `.torrent` files (`application/x-bittorrent` and
+`application/octet-stream`), for **magnet links** (`magnet:` scheme) and for shared links
+(`text/plain`). So you can:
 
-Either way an in-app confirmation dialog shows the file name with a **Cancel** /
-**Download** choice. Nothing is sent until you confirm; on confirm the file is uploaded
-to `POST /torrents/add` and qBittorrent starts downloading it immediately. The organize
-job is not triggered by a torrent download.
+- open a `.torrent` from a file manager or the browser download notification,
+- tap a magnet link in a browser and pick **Media Organizer**,
+- or share a `.torrent` file / magnet link into the app.
 
-Because `application/octet-stream` is a generic type, Android may also offer Media
-Organizer for other unknown file types. The app filters these out and only acts on
-`.torrent` files.
+Either way an in-app confirmation dialog shows the name with a **Cancel** / **Download**
+choice. Nothing is sent until you confirm; on confirm the file or link is uploaded to
+`POST /torrents/add` or `POST /torrents/add-magnet` and qBittorrent starts downloading it
+immediately. The organize job is not triggered by a torrent download.
+
+Magnet links have no file name until metadata is fetched, so the dialog shows the `dn`
+(the display name inside the link) or the info hash instead.
+
+Because `application/octet-stream` and `text/plain` are generic types, Android may also
+offer Media Organizer for other files and link shares. The app filters these out and only
+acts on `.torrent` files and `magnet:` links.
+
+## Viewing torrent progress
+
+**Torrents** in the top-right menu lists every torrent with a progress bar, percentage,
+status, transferred size, speed and ETA. The list refreshes every few seconds while the
+screen is open; pull down or tap the refresh icon to refresh manually.
+
+## Older servers
+
+If the server runs an older MediaOrganizer build that predates these features, the app
+detects the missing endpoint (HTTP 404) and tells you to update the server instead of
+showing a raw error. The same applies when qBittorrent is not configured on the server
+(HTTP 503).
 
 ## First-time setup
 
@@ -62,7 +82,9 @@ The app stores this value in local preferences. You can clear it via **Reset API
 | GET | `/library` | Organized media library structure |
 | GET | `/browse` | Source folder directory listing |
 | POST | `/trigger-job` | Trigger organize job |
+| GET | `/torrents` | List torrents with progress |
 | POST | `/torrents/add` | Upload a `.torrent` file and start the download |
+| POST | `/torrents/add-magnet` | Add a magnet link and start the download |
 | POST | `/rename` | Rename file or directory |
 | POST | `/move` | Move file or directory |
 | POST | `/delete` | Delete files or directories |

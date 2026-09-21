@@ -58,7 +58,9 @@
 
 | Method | Path | Description |
 |---|---|---|
+| `GET` | `/torrents` | List torrents with progress, speed, ETA and mapped state label |
 | `POST` | `/torrents/add` | Upload a `.torrent` file (multipart field `file`) and start downloading it via qBittorrent (optional `folderPath` form field). Does not trigger the organize job |
+| `POST` | `/torrents/add-magnet` | Add a magnet link (`{ "magnetLink": "...", "folderPath": "..." }`) and start downloading. Accepts http(s) `.torrent` URLs too |
 
 ### File management
 
@@ -98,8 +100,8 @@ All services are registered as **singletons** via DI. Key components:
 | Logging | `LogBroadcaster` | Pub/sub broker for live log streaming via SSE |
 | Logging | `BroadcastLoggerProvider` | Custom `ILoggerProvider` that publishes logs to `LogBroadcaster` |
 | Helpers | `IFileSystem` / `PhysicalFileSystem` | File system abstraction for testability |
-| Torrents | `TorrentService` | Validates uploaded `.torrent` files and resolves the download folder |
-| Torrents | `QbittorrentClient` | qBittorrent WebUI API v2 client (login + `torrents/add`) |
+| Torrents | `TorrentService` | Validates uploaded `.torrent` files and magnet links, resolves the download folder |
+| Torrents | `QbittorrentClient` | qBittorrent WebUI API v2 client (login, `torrents/add`, `torrents/info`) |
 | Helpers | `PathHelpers` | Unique path generation (`name (1).ext`, `name (2).ext`, ...) |
 
 ## Organize Flow (`MediaFileOrganizer`)

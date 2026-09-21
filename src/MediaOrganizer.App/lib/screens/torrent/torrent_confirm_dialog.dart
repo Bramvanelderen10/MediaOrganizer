@@ -1,29 +1,30 @@
 import 'package:flutter/material.dart';
 
 import '../../services/api_service.dart';
+import '../../services/torrent_intent_service.dart';
 
-/// Confirmation dialog shown when a `.torrent` file is opened with the app.
+/// Confirmation dialog shown when a `.torrent` file or magnet link is opened with the app.
 ///
 /// The download only starts after the user confirms.
 class TorrentConfirmDialog extends StatefulWidget {
   final ApiService api;
-  final String filePath;
+  final TorrentIntentRequest request;
 
   const TorrentConfirmDialog({
     super.key,
     required this.api,
-    required this.filePath,
+    required this.request,
   });
 
   /// Shows the dialog and completes when it is dismissed.
   static Future<void> show(
     BuildContext context, {
     required ApiService api,
-    required String filePath,
+    required TorrentIntentRequest request,
   }) {
     return showDialog<void>(
       context: context,
-      builder: (_) => TorrentConfirmDialog(api: api, filePath: filePath),
+      builder: (_) => TorrentConfirmDialog(api: api, request: request),
     );
   }
 
@@ -35,7 +36,12 @@ class _TorrentConfirmDialogState extends State<TorrentConfirmDialog> {
   bool _isUploading = false;
   String? _errorMessage;
 
-  String get _fileName => widget.filePath.split('/').last;
+  bool get _isMagnet => widget.request.magnetLink != null;
+
+  String get _displayName => widget.request.displayName;
+
+  /// Feature name used when explaining that the server is too old.
+  String get _featureLabel => _isMagnet ? 'magnet links' : '.torrent files';
 
   Future<void> _startDownload() async {
     setState(() {
@@ -44,7 +50,10 @@ class _TorrentConfirmDialogState extends State<TorrentConfirmDialog> {
     });
 
     try {
-      final result = await widget.api.addTorrent(filePath: widget.filePath);
+      final result = _isMagnet
+          ? await widget.api.addMagnet(magnetLink: widget.request.magnetLink!)
+          : await widget.api.addTorrent(filePath: widget.request.filePath!);
+
       if (!mounted) return;
 
       final savePath = result['savePath'] as String?;
@@ -53,8 +62,8 @@ class _TorrentConfirmDialogState extends State<TorrentConfirmDialog> {
         SnackBar(
           content: Text(
             savePath == null
-                ? 'Download started: $_fileName'
-                : 'Download started: $_fileName → $savePath',
+                ? 'Download started: $_displayName'
+                : 'Download started: $_displayName → $savePath',
           ),
         ),
       );
@@ -62,9 +71,7 @@ class _TorrentConfirmDialogState extends State<TorrentConfirmDialog> {
       if (!mounted) return;
       setState(() {
         _isUploading = false;
-        _errorMessage = ex.statusCode == 503
-            ? 'Torrent downloads are not configured on the server.'
-            : ex.body;
+        _errorMessage = ex.userMessage(feature: _featureLabel);
       });
     } catch (ex) {
       if (!mounted) return;
@@ -78,17 +85,31 @@ class _TorrentConfirmDialogState extends State<TorrentConfirmDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Start download?'),
+      title: Text(_isMagnet ? 'Start magnet download?' : 'Start download?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_fileName, style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(_displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          const Text(
-            'The torrent will be added to qBittorrent and the download starts '
-            'immediately. Files land in the download folder configured on the server.',
+          Text(
+            _isMagnet
+                ? 'The magnet link will be added to qBittorrent and the download starts '
+                      'immediately. Files land in the download folder configured on the server.'
+                : 'The torrent will be added to qBittorrent and the download starts '
+                      'immediately. Files land in the download folder configured on the server.',
           ),
+          if (_isMagnet) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Metadata is fetched from peers first, so it may take a moment before '
+              'the name and size appear.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           if (_errorMessage != null) ...[
             const SizedBox(height: 12),
             Text(

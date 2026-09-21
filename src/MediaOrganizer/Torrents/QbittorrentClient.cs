@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using MediaOrganizer.Configuration;
 
@@ -22,8 +24,14 @@ public class QbittorrentClient : ITorrentClient
 {
     private const string LoginPath = "api/v2/auth/login";
     private const string AddTorrentPath = "api/v2/torrents/add";
+    private const string TorrentsInfoPath = "api/v2/torrents/info";
     private const string TorrentMimeType = "application/x-bittorrent";
     private const string FailedBody = "Fails.";
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly QbittorrentOptions _options;
@@ -65,42 +73,182 @@ public class QbittorrentClient : ITorrentClient
 
         using (response)
         {
-            if (response.StatusCode == HttpStatusCode.UnsupportedMediaType)
-            {
-                throw new QbittorrentException("qBittorrent rejected the torrent file as invalid.");
-            }
+            EnsureAddSucceeded(
+                response, fileName, savePath, (await response.Content.ReadAsStringAsync(cancellationToken)).Trim());
+        }
+    }
 
-            if (response.StatusCode == HttpStatusCode.Conflict)
-            {
-                throw new QbittorrentException("qBittorrent already has this torrent.");
-            }
+    public async Task AddTorrentUrlAsync(
+        string magnetLink,
+        string savePath,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUrl = GetBaseUrl();
+        var client = CreateClient();
 
-            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-            {
-                throw new QbittorrentException(
-                    "qBittorrent refused the request. Check the configured username and password.");
-            }
+        var response = await SendAddMagnetAsync(client, baseUrl, magnetLink, savePath, cancellationToken);
 
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            response.Dispose();
+            _logger.LogInformation("qBittorrent session expired while adding a magnet link; re-authenticating");
+
+            _sessionCookie = null;
+            response = await SendAddMagnetAsync(client, baseUrl, magnetLink, savePath, cancellationToken);
+        }
+
+        using (response)
+        {
+            EnsureAddSucceeded(
+                response, magnetLink, savePath, (await response.Content.ReadAsStringAsync(cancellationToken)).Trim());
+        }
+    }
+
+    /// <summary>
+    /// Verifies the response of an add-torrent call, translating client errors into
+    /// messages that are safe to show to API callers.
+    /// </summary>
+    private void EnsureAddSucceeded(
+        HttpResponseMessage response,
+        string source,
+        string savePath,
+        string body)
+    {
+        if (response.StatusCode == HttpStatusCode.UnsupportedMediaType)
+        {
+            throw new QbittorrentException("qBittorrent rejected the torrent as invalid.");
+        }
+
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            throw new QbittorrentException("qBittorrent already has this torrent.");
+        }
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            throw new QbittorrentException(
+                "qBittorrent refused the request. Check the configured username and password.");
+        }
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new QbittorrentException(
+                $"qBittorrent returned {(int)response.StatusCode} {response.ReasonPhrase} while adding the torrent.");
+        }
+
+        // Older WebUI versions report a per-request failure in the body with a 200 status.
+        if (body.Equals(FailedBody, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new QbittorrentException("qBittorrent failed to add the torrent.");
+        }
+
+        _logger.LogInformation("Added torrent {Source} to qBittorrent with save path {SavePath}", source, savePath);
+    }
+
+    public async Task<IReadOnlyList<TorrentInfo>> GetTorrentsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var baseUrl = GetBaseUrl();
+        var client = CreateClient();
+
+        var response = await SendGetTorrentsAsync(client, baseUrl, cancellationToken);
+
+        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            response.Dispose();
+            _logger.LogInformation("qBittorrent session expired while listing torrents; re-authenticating");
+
+            _sessionCookie = null;
+            response = await SendGetTorrentsAsync(client, baseUrl, cancellationToken);
+        }
+
+        using (response)
+        {
             if (!response.IsSuccessStatusCode)
             {
                 throw new QbittorrentException(
-                    $"qBittorrent returned {(int)response.StatusCode} {response.ReasonPhrase} while adding the torrent.");
+                    $"qBittorrent returned {(int)response.StatusCode} {response.ReasonPhrase} while listing torrents.");
             }
 
-            var body = (await response.Content.ReadAsStringAsync(cancellationToken)).Trim();
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
-            // Older WebUI versions report a per-request failure in the body with a 200 status.
-            if (body.Equals(FailedBody, StringComparison.OrdinalIgnoreCase))
+            List<TorrentListEntry>? entries;
+            try
             {
-                throw new QbittorrentException("qBittorrent failed to add the torrent.");
+                entries = await JsonSerializer.DeserializeAsync<List<TorrentListEntry>>(
+                    stream, JsonOptions, cancellationToken);
+            }
+            catch (JsonException ex)
+            {
+                throw new QbittorrentException("qBittorrent returned an unexpected torrent list format.", ex);
             }
 
-            _logger.LogInformation(
-                "Added torrent {FileName} to qBittorrent with save path {SavePath}",
-                fileName,
-                savePath);
+            if (entries is null)
+            {
+                return [];
+            }
+
+            return entries
+                .Select(MapToTorrentInfo)
+                .OrderByDescending(t => t.IsDownloading)
+                .ThenByDescending(t => t.AddedOnUnixSeconds)
+                .ToList();
         }
     }
+
+    /// <summary>
+    /// Maps qBittorrent's raw torrent entry onto <see cref="TorrentInfo"/>, translating the
+    /// state codes into human readable text.
+    /// </summary>
+    private static TorrentInfo MapToTorrentInfo(TorrentListEntry entry)
+    {
+        var amountLeft = entry.AmountLeft > 0 ? entry.AmountLeft : 0;
+
+        // qBittorrent reports 8640000 seconds for "unknown" ETA.
+        long? eta = entry.Eta is null or < 0 or >= 8_640_000 ? null : entry.Eta;
+
+        return new TorrentInfo(
+            Hash: entry.Hash ?? string.Empty,
+            Name: string.IsNullOrWhiteSpace(entry.Name) ? "(fetching metadata)" : entry.Name!,
+            State: string.IsNullOrWhiteSpace(entry.State) ? "unknown" : entry.State!,
+            Status: DescribeState(entry.State, amountLeft),
+            Progress: Math.Clamp(entry.Progress, 0d, 1d),
+            SizeBytes: entry.Size > 0 ? entry.Size : entry.TotalSize,
+            DownloadedBytes: entry.Completed,
+            AmountLeftBytes: amountLeft,
+            DownloadSpeed: entry.DownloadSpeed,
+            UploadSpeed: entry.UploadSpeed,
+            EtaSeconds: eta,
+            SavePath: entry.SavePath ?? string.Empty,
+            AddedOnUnixSeconds: entry.AddedOn);
+    }
+
+    /// <summary>
+    /// Turns a qBittorrent state code into a short label suitable for display.
+    /// See the state table in the qBittorrent WebUI API documentation.
+    /// </summary>
+    private static string DescribeState(string? state, long amountLeft) => state switch
+    {
+        "error" => "Error",
+        "missingFiles" => "Error - files missing",
+        "allocating" => "Allocating disk space",
+        "checkingResumeData" => "Checking resume data",
+        "checkingDL" or "checkingUP" => "Checking files",
+        "metaDL" => "Fetching metadata",
+        "forcedDL" => "Downloading (forced)",
+        "downloading" => "Downloading",
+        "stalledDL" => "Stalled - no peers",
+        "queuedDL" => "Queued",
+        "pausedDL" => "Paused",
+        "forcedUP" => "Seeding (forced)",
+        "uploading" => "Seeding",
+        "stalledUP" => "Seeding - no peers",
+        "queuedUP" => "Queued for seeding",
+        "pausedUP" => "Completed (paused)",
+        "moving" => "Moving files",
+        null or "" => amountLeft > 0 ? "Downloading" : "Completed",
+        _ => state
+    };
 
     private async Task<HttpResponseMessage> SendAddTorrentAsync(
         HttpClient client,
@@ -113,18 +261,7 @@ public class QbittorrentClient : ITorrentClient
         await EnsureLoggedInAsync(client, baseUrl, cancellationToken);
 
         using var form = BuildAddTorrentForm(fileName, content, savePath);
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUrl, AddTorrentPath))
-        {
-            Content = form
-        };
-        request.Headers.Referrer = baseUrl;
-
-        if (!string.IsNullOrWhiteSpace(_sessionCookie))
-        {
-            request.Headers.Add("Cookie", _sessionCookie);
-        }
-
-        return await SendAsync(client, request, baseUrl, cancellationToken);
+        return await SendFormAsync(client, baseUrl, AddTorrentPath, form, cancellationToken);
     }
 
     private MultipartFormDataContent BuildAddTorrentForm(string fileName, byte[] content, string savePath)
@@ -135,6 +272,26 @@ public class QbittorrentClient : ITorrentClient
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(TorrentMimeType);
         form.Add(fileContent, "torrents", fileName);
 
+        AddCommonAddFields(form, savePath);
+
+        return form;
+    }
+
+    /// <summary>
+    /// Adds a magnet link (or .torrent URL) using the <c>urls</c> form field.
+    /// </summary>
+    private MultipartFormDataContent BuildAddMagnetForm(string magnetLink, string savePath)
+    {
+        var form = new MultipartFormDataContent();
+        form.Add(new StringContent(magnetLink), "urls");
+
+        AddCommonAddFields(form, savePath);
+
+        return form;
+    }
+
+    private void AddCommonAddFields(MultipartFormDataContent form, string savePath)
+    {
         form.Add(new StringContent(savePath), "savepath");
 
         // Add the torrent in the running state so the download starts immediately.
@@ -149,8 +306,58 @@ public class QbittorrentClient : ITorrentClient
         {
             form.Add(new StringContent(_options.Tags), "tags");
         }
+    }
 
-        return form;
+    private async Task<HttpResponseMessage> SendAddMagnetAsync(
+        HttpClient client,
+        Uri baseUrl,
+        string magnetLink,
+        string savePath,
+        CancellationToken cancellationToken)
+    {
+        await EnsureLoggedInAsync(client, baseUrl, cancellationToken);
+
+        using var form = BuildAddMagnetForm(magnetLink, savePath);
+        return await SendFormAsync(client, baseUrl, AddTorrentPath, form, cancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> SendGetTorrentsAsync(
+        HttpClient client,
+        Uri baseUrl,
+        CancellationToken cancellationToken)
+    {
+        await EnsureLoggedInAsync(client, baseUrl, cancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUrl, TorrentsInfoPath));
+        request.Headers.Referrer = baseUrl;
+        AddSessionCookie(request);
+
+        return await SendAsync(client, request, baseUrl, cancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> SendFormAsync(
+        HttpClient client,
+        Uri baseUrl,
+        string path,
+        HttpContent form,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUrl, path))
+        {
+            Content = form
+        };
+        request.Headers.Referrer = baseUrl;
+        AddSessionCookie(request);
+
+        return await SendAsync(client, request, baseUrl, cancellationToken);
+    }
+
+    private void AddSessionCookie(HttpRequestMessage request)
+    {
+        if (!string.IsNullOrWhiteSpace(_sessionCookie))
+        {
+            request.Headers.Add("Cookie", _sessionCookie);
+        }
     }
 
     private async Task EnsureLoggedInAsync(HttpClient client, Uri baseUrl, CancellationToken cancellationToken)
@@ -293,4 +500,49 @@ public class QbittorrentClient : ITorrentClient
             throw new QbittorrentException($"The request to qBittorrent at {baseUrl} timed out.", ex);
         }
     }
+}
+/// <summary>
+/// Subset of a qBittorrent <c>/api/v2/torrents/info</c> entry used by the API.
+/// Field names match the qBittorrent JSON payload.
+/// </summary>
+internal sealed class TorrentListEntry
+{
+    [JsonPropertyName("hash")]
+    public string? Hash { get; set; }
+
+    [JsonPropertyName("name")]
+    public string? Name { get; set; }
+
+    [JsonPropertyName("state")]
+    public string? State { get; set; }
+
+    [JsonPropertyName("progress")]
+    public double Progress { get; set; }
+
+    [JsonPropertyName("size")]
+    public long Size { get; set; }
+
+    [JsonPropertyName("total_size")]
+    public long TotalSize { get; set; }
+
+    [JsonPropertyName("completed")]
+    public long Completed { get; set; }
+
+    [JsonPropertyName("amount_left")]
+    public long AmountLeft { get; set; }
+
+    [JsonPropertyName("dlspeed")]
+    public long DownloadSpeed { get; set; }
+
+    [JsonPropertyName("upspeed")]
+    public long UploadSpeed { get; set; }
+
+    [JsonPropertyName("eta")]
+    public long? Eta { get; set; }
+
+    [JsonPropertyName("save_path")]
+    public string? SavePath { get; set; }
+
+    [JsonPropertyName("added_on")]
+    public long AddedOn { get; set; }
 }

@@ -18,4 +18,21 @@ public interface ITorrentClient
         byte[] content,
         string savePath,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds a torrent from a magnet link or .torrent URL and starts downloading it immediately.
+    /// </summary>
+    /// <param name="magnetLink">Magnet link (or http/https URL to a .torrent file).</param>
+    /// <param name="savePath">Download folder as understood by the BitTorrent client.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task AddTorrentUrlAsync(
+        string magnetLink,
+        string savePath,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the current torrent list with progress information.
+    /// </summary>
+    Task<IReadOnlyList<TorrentInfo>> GetTorrentsAsync(
+        CancellationToken cancellationToken = default);
 }

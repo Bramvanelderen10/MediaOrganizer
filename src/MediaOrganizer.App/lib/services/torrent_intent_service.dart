@@ -2,18 +2,74 @@ import 'dart:async';
 
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
-/// Surfaces `.torrent` files that were opened with, or shared into, the app.
+/// A torrent source that was opened with, or shared into, the app.
 ///
-/// Intents can arrive before the UI is ready (cold start), so received paths are
+/// Either a local `.torrent` file ([filePath]) or a magnet link / torrent URL
+/// ([magnetLink]) - never both.
+class TorrentIntentRequest {
+  final String? filePath;
+  final String? magnetLink;
+
+  const TorrentIntentRequest.file(this.filePath) : magnetLink = null;
+  const TorrentIntentRequest.magnet(this.magnetLink) : filePath = null;
+
+  /// A short label for the confirmation dialog.
+  String get displayName {
+    if (filePath != null) {
+      return filePath!.split('/').last;
+    }
+
+    final link = magnetLink ?? '';
+    final dn = _queryValue(link, 'dn');
+    if (dn != null && dn.isNotEmpty) {
+      return dn;
+    }
+
+    final hash = _infoHash(link);
+    return hash == null ? 'Magnet link' : 'Magnet: $hash';
+  }
+
+  static String? _queryValue(String link, String key) {
+    final start = link.indexOf('?');
+    if (start < 0) return null;
+
+    for (final pair in link.substring(start + 1).split('&')) {
+      final separator = pair.indexOf('=');
+      if (separator <= 0) continue;
+      if (pair.substring(0, separator).toLowerCase() == key) {
+        return Uri.decodeComponent(pair.substring(separator + 1));
+      }
+    }
+
+    return null;
+  }
+
+  static String? _infoHash(String link) {
+    const marker = 'xt=urn:btih:';
+    final index = link.toLowerCase().indexOf(marker);
+    if (index < 0) return null;
+
+    final rest = link.substring(index + marker.length);
+    final end = rest.indexOf('&');
+    return end < 0 ? rest : rest.substring(0, end);
+  }
+}
+
+/// Surfaces torrent sources that were opened with, or shared into, the app.
+///
+/// Handles both `.torrent` files (from a file manager or a download notification)
+/// and `magnet:` links (from a browser or any app that shares a link).
+///
+/// Intents can arrive before the UI is ready (cold start), so received requests are
 /// queued until a handler is registered via [setHandler].
 class TorrentIntentService {
-  final List<String> _pending = [];
+  final List<TorrentIntentRequest> _pending = [];
 
   StreamSubscription<List<SharedMediaFile>>? _subscription;
-  void Function(String filePath)? _handler;
+  void Function(TorrentIntentRequest request)? _handler;
   bool _started = false;
 
-  /// Begins listening for incoming file intents. Safe to call more than once.
+  /// Begins listening for incoming intents. Safe to call more than once.
   Future<void> start() async {
     if (_started) {
       return;
@@ -24,11 +80,11 @@ class TorrentIntentService {
       _subscription = ReceiveSharingIntent.instance.getMediaStream().listen(
         _handleFiles,
         onError: (Object _) {
-          // Opening files is best effort; ignore sharing errors.
+          // Opening torrents is best effort; ignore sharing errors.
         },
       );
 
-      // Covers the case where the app was launched by opening a .torrent file.
+      // Covers the case where the app was launched by opening a .torrent or magnet link.
       final initial = await ReceiveSharingIntent.instance.getInitialMedia();
       _handleFiles(initial);
       ReceiveSharingIntent.instance.reset();
@@ -37,20 +93,20 @@ class TorrentIntentService {
     }
   }
 
-  /// Registers the handler that receives torrent paths and flushes anything
+  /// Registers the handler that receives torrent requests and flushes anything
   /// that arrived before the handler was set.
-  void setHandler(void Function(String filePath) handler) {
+  void setHandler(void Function(TorrentIntentRequest request) handler) {
     _handler = handler;
 
     if (_pending.isEmpty) {
       return;
     }
 
-    final queued = List<String>.from(_pending);
+    final queued = List<TorrentIntentRequest>.from(_pending);
     _pending.clear();
 
-    for (final path in queued) {
-      handler(path);
+    for (final request in queued) {
+      handler(request);
     }
   }
 
@@ -61,22 +117,41 @@ class TorrentIntentService {
 
   void _handleFiles(List<SharedMediaFile> files) {
     for (final file in files) {
-      if (!_isTorrent(file)) {
+      final request = _toRequest(file);
+      if (request == null) {
         continue;
       }
 
       final handler = _handler;
       if (handler != null) {
-        handler(file.path);
+        handler(request);
       } else {
-        _pending.add(file.path);
+        _pending.add(request);
       }
     }
   }
 
-  static bool _isTorrent(SharedMediaFile file) {
+  /// Turns a shared item into a torrent request, or null when it is not a torrent.
+  static TorrentIntentRequest? _toRequest(SharedMediaFile file) {
+    // Magnet links and torrent URLs arrive as links or plain text in `path`.
+    if (file.type == SharedMediaType.url || file.type == SharedMediaType.text) {
+      final value = file.path.trim();
+      if (value.toLowerCase().startsWith('magnet:')) {
+        return TorrentIntentRequest.magnet(value);
+      }
+      if (value.toLowerCase().endsWith('.torrent')) {
+        return TorrentIntentRequest.magnet(value);
+      }
+      return null;
+    }
+
+    // Files: only .torrent is interesting.
     final name = file.path.split('/').last.toLowerCase();
-    return name.endsWith('.torrent');
+    if (name.endsWith('.torrent')) {
+      return TorrentIntentRequest.file(file.path);
+    }
+
+    return null;
   }
 
   Future<void> dispose() async {

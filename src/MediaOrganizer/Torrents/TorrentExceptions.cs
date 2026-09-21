@@ -38,3 +38,30 @@ public class TorrentValidationException : Exception
     {
     }
 }
+
+/// <summary>
+/// A single torrent as reported by the BitTorrent client, with the fields needed to
+/// render a progress list.
+/// </summary>
+public record TorrentInfo(
+    string Hash,
+    string Name,
+    /// <summary>Raw client state, e.g. <c>stalledDL</c>.</summary>
+    string State,
+    /// <summary>Human readable state derived from <see cref="State"/>.</summary>
+    string Status,
+    /// <summary>Completion ratio between 0 and 1.</summary>
+    double Progress,
+    long SizeBytes,
+    long DownloadedBytes,
+    long AmountLeftBytes,
+    long DownloadSpeed,
+    long UploadSpeed,
+    /// <summary>Seconds until completion, or null when unknown / not downloading.</summary>
+    long? EtaSeconds,
+    string SavePath,
+    long AddedOnUnixSeconds)
+{
+    /// <summary>True while the torrent still has data left to download.</summary>
+    public bool IsDownloading => AmountLeftBytes > 0;
+}

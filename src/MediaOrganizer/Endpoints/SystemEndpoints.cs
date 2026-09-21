@@ -25,6 +25,8 @@ public static class SystemEndpoints
                 storageInfo = "GET /storage-info",
                 library = "GET /library",
                 addTorrent = "POST /torrents/add",
+                addMagnet = "POST /torrents/add-magnet",
+                listTorrents = "GET /torrents",
                 health = "GET /health",
                 streamLogs = "GET /logs/stream",
                 openApiSpec = "GET /openapi/v1.json",

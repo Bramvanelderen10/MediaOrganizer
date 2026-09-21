@@ -194,5 +194,160 @@ public class TorrentServiceTests
         Assert.False(CreateService(url: null).IsConfigured);
         Assert.False(CreateService(url: "  ").IsConfigured);
     }
+[Fact]
+    public async Task AddMagnetAsync_SendsLinkToClient()
+    {
+        var sut = CreateService(downloadFolder: "/media/incoming");
+        const string magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Some.Movie.2024";
+
+        var result = await sut.AddMagnetAsync(magnet, cancellationToken: Ct);
+
+        Assert.Equal("/media/incoming", result.SavePath);
+        _clientMock.Verify(
+            c => c.AddTorrentUrlAsync(magnet, "/media/incoming", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task AddMagnetAsync_UsesDnParameterAsDisplayName()
+    {
+        var sut = CreateService();
+        const string magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Some.Movie.2024";
+
+        var result = await sut.AddMagnetAsync(magnet, cancellationToken: Ct);
+
+        Assert.Equal("Some.Movie.2024", result.FileName);
+    }
+
+    [Fact]
+    public async Task AddMagnetAsync_FallsBackToInfoHashWhenNoDisplayName()
+    {
+        var sut = CreateService();
+        const string magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567";
+
+        var result = await sut.AddMagnetAsync(magnet, cancellationToken: Ct);
+
+        Assert.Equal("magnet:0123456789abcdef0123456789abcdef01234567", result.FileName);
+    }
+
+    [Fact]
+    public async Task AddMagnetAsync_AcceptsHttpTorrentUrl()
+    {
+        var sut = CreateService();
+        const string url = "https://example.com/files/movie.torrent";
+
+        await sut.AddMagnetAsync(url, cancellationToken: Ct);
+
+        _clientMock.Verify(
+            c => c.AddTorrentUrlAsync(url, It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task AddMagnetAsync_UsesFolderPathOverride()
+    {
+        var sut = CreateService(downloadFolder: "/media/incoming");
+
+        await sut.AddMagnetAsync(
+            "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", "/media/other", Ct);
+
+        _clientMock.Verify(
+            c => c.AddTorrentUrlAsync(It.IsAny<string>(), "/media/other", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("not a link")]
+    [InlineData("ftp://example.com/movie.torrent")]
+    [InlineData("magnet:")]
+    [InlineData("magnet:?dn=NoHashHere")]
+    public async Task AddMagnetAsync_RejectsInvalidLinks(string? magnetLink)
+    {
+        var sut = CreateService();
+
+        await Assert.ThrowsAsync<TorrentValidationException>(
+            () => sut.AddMagnetAsync(magnetLink, cancellationToken: Ct));
+
+        _clientMock.Verify(
+            c => c.AddTorrentUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task AddMagnetAsync_ThrowsWhenNotConfigured()
+    {
+        var sut = CreateService(url: null);
+
+        await Assert.ThrowsAsync<QbittorrentNotConfiguredException>(
+            () => sut.AddMagnetAsync(
+                "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567", cancellationToken: Ct));
+    }
+
+    [Fact]
+    public async Task GetTorrentsAsync_ReturnsClientTorrents()
+    {
+        var expected = new List<TorrentInfo>
+        {
+            new(
+                Hash: "abc",
+                Name: "Some Movie",
+                State: "downloading",
+                Status: "Downloading",
+                Progress: 0.42,
+                SizeBytes: 1000,
+                DownloadedBytes: 420,
+                AmountLeftBytes: 580,
+                DownloadSpeed: 1024,
+                UploadSpeed: 12,
+                EtaSeconds: 60,
+                SavePath: "/media",
+                AddedOnUnixSeconds: 1_700_000_000)
+        };
+
+        _clientMock
+            .Setup(c => c.GetTorrentsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expected);
+
+        var sut = CreateService();
+
+        var result = await sut.GetTorrentsAsync(Ct);
+
+        Assert.Single(result);
+        Assert.Equal("Some Movie", result[0].Name);
+        Assert.Equal(0.42, result[0].Progress, 3);
+        Assert.True(result[0].IsDownloading);
+    }
+
+    [Fact]
+    public async Task GetTorrentsAsync_ThrowsWhenNotConfigured()
+    {
+        var sut = CreateService(url: null);
+
+        await Assert.ThrowsAsync<QbittorrentNotConfiguredException>(() => sut.GetTorrentsAsync(Ct));
+    }
+
+    [Fact]
+    public void TorrentInfo_IsNotDownloadingWhenComplete()
+    {
+        var info = new TorrentInfo(
+            Hash: "abc",
+            Name: "Done",
+            State: "uploading",
+            Status: "Seeding",
+            Progress: 1d,
+            SizeBytes: 1000,
+            DownloadedBytes: 1000,
+            AmountLeftBytes: 0,
+            DownloadSpeed: 0,
+            UploadSpeed: 512,
+            EtaSeconds: null,
+            SavePath: "/media",
+            AddedOnUnixSeconds: 1_700_000_000);
+
+        Assert.False(info.IsDownloading);
+    }
 
 }

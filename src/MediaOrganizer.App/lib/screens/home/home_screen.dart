@@ -9,6 +9,7 @@ import '../file_browser/file_browser_screen.dart';
 import '../library/library_screen.dart';
 import '../storage/storage_screen.dart';
 import '../torrent/torrent_confirm_dialog.dart';
+import '../torrent/torrents_screen.dart';
 import 'widgets/api_status_header.dart';
 import 'widgets/forget_season_dialog.dart';
 import 'widgets/log_stream_container.dart';
@@ -18,6 +19,7 @@ enum _AppMenuAction {
   library,
   fileBrowser,
   storage,
+  torrents,
   forgetShowSeason,
   resetApiUrl,
 }
@@ -79,8 +81,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  /// Shows the confirmation dialog for a `.torrent` file opened with the app.
-  void _handleIncomingTorrent(String filePath) {
+  /// Shows the confirmation dialog for a `.torrent` file or magnet link opened with the app.
+  void _handleIncomingTorrent(TorrentIntentRequest request) {
     if (!mounted || _isTorrentDialogVisible) {
       return;
     }
@@ -98,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         await TorrentConfirmDialog.show(
           context,
           api: _api,
-          filePath: filePath,
+          request: request,
         );
       } finally {
         _isTorrentDialogVisible = false;
@@ -340,6 +342,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     MaterialPageRoute(builder: (_) => StorageScreen(api: _api)),
                   );
                   break;
+                case _AppMenuAction.torrents:
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => TorrentsScreen(api: _api)),
+                  );
+                  break;
                 case _AppMenuAction.forgetShowSeason:
                   unawaited(ForgetSeasonDialog.show(context, _api));
                   break;
@@ -361,6 +368,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   PopupMenuItem<_AppMenuAction>(
                     value: _AppMenuAction.storage,
                     child: Text('Storage'),
+                  ),
+                  PopupMenuItem<_AppMenuAction>(
+                    value: _AppMenuAction.torrents,
+                    child: Text('Torrents'),
                   ),
                   PopupMenuItem<_AppMenuAction>(
                     value: _AppMenuAction.forgetShowSeason,

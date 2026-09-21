@@ -236,6 +236,49 @@ class ApiService {
 
     throw ApiException(response.statusCode, response.body);
   }
+
+  /// Adds a magnet link via POST /torrents/add-magnet.
+  ///
+  /// Throws [ApiException] with [ApiException.isNotFound] when the server does not
+  /// support this endpoint (older backend).
+  Future<Map<String, dynamic>> addMagnet({
+    required String magnetLink,
+    String? folderPath,
+  }) async {
+    final response = await http.post(
+      _uri('/torrents/add-magnet'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'magnetLink': magnetLink,
+        if (folderPath != null && folderPath.isNotEmpty) 'folderPath': folderPath,
+      }),
+    );
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    }
+
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Fetches all torrents with progress via GET /torrents.
+  ///
+  /// Throws [ApiException] with [ApiException.isNotFound] when the server does not
+  /// support this endpoint (older backend).
+  Future<List<Map<String, dynamic>>> getTorrents() async {
+    final response = await http.get(_uri('/torrents'));
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final torrents = decoded['torrents'];
+      if (torrents is! List) {
+        return const [];
+      }
+      return torrents.cast<Map<String, dynamic>>();
+    }
+
+    throw ApiException(response.statusCode, response.body);
+  }
 }
 
 class ApiException implements Exception {
@@ -243,6 +286,59 @@ class ApiException implements Exception {
   final String body;
 
   ApiException(this.statusCode, this.body);
+
+  /// The endpoint does not exist on the server, which usually means the backend is
+  /// an older build that predates the feature.
+  bool get isNotFound => statusCode == 404;
+
+  /// The server could not perform the request because a dependent service
+  /// (e.g. qBittorrent) is not configured.
+  bool get isNotConfigured => statusCode == 503;
+
+  /// The server reached the dependent service but it rejected the request.
+  bool get isUpstreamFailure => statusCode == 502;
+
+  /// Extracts the `message` field from the JSON error body, when present.
+  String? get serverMessage {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final message = decoded['message'];
+        if (message is String && message.trim().isNotEmpty) {
+          return message.trim();
+        }
+      }
+    } catch (_) {
+      // Body was not JSON; fall through to the raw text.
+    }
+
+    final trimmed = body.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  /// A message suitable for showing directly to the user.
+  ///
+  /// [feature] names the capability being used, e.g. `magnet links`.
+  String userMessage({String? feature}) {
+    final suffix = feature == null ? '' : ' ($feature)';
+
+    if (isNotFound) {
+      return 'This server does not support this yet$suffix. '
+          'Update MediaOrganizer on the server to a newer version.';
+    }
+
+    if (isNotConfigured) {
+      return serverMessage ??
+          'The server is not configured for downloads yet. '
+              'Set up qBittorrent on the server.';
+    }
+
+    if (isUpstreamFailure) {
+      return serverMessage ?? 'The download client rejected the request.';
+    }
+
+    return serverMessage ?? 'Server error ($statusCode).';
+  }
 
   @override
   String toString() => 'ApiException($statusCode): $body';

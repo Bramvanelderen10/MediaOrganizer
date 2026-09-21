@@ -93,7 +93,9 @@ curl http://localhost:45263/health
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/torrents/add` | Upload a `.torrent` file and start downloading it via qBittorrent (optional `folderPath`) |
+| GET | `/torrents` | List all torrents with progress, speed, ETA and state |
+| POST | `/torrents/add` | Upload a `.torrent` file and start the download |
+| POST | `/torrents/add-magnet` | Add a magnet link and start the download |
 
 ### File management
 
@@ -152,14 +154,28 @@ curl http://localhost:45263/library
 
 ## Adding torrents
 
-`POST /torrents/add` accepts a `.torrent` file as `multipart/form-data` and hands it to
-qBittorrent, which starts downloading it immediately. The organize job is **not** triggered;
-downloaded files are organized the next time the job is run (`POST /trigger-job`).
+There are two ways to add a download: a `.torrent` file upload or a magnet link. Both hand
+the torrent to qBittorrent, which starts downloading it immediately. The organize job is
+**not** triggered; downloaded files are organized the next time the job is run
+(`POST /trigger-job`).
+
+### From a .torrent file
 
 ```bash
 curl -X POST http://localhost:45263/torrents/add \
   -F "file=@/path/to/movie.torrent"
 ```
+
+### From a magnet link
+
+```bash
+curl -X POST http://localhost:45263/torrents/add-magnet \
+  -H "Content-Type: application/json" \
+  -d '{"magnetLink":"magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big+Buck+Bunny"}'
+```
+
+http(s) URLs pointing at a `.torrent` file are accepted as well. A magnet link must contain a
+BitTorrent info hash (`xt=urn:btih:`).
 
 Optionally override the download folder for a single request (must be an absolute path that
 the qBittorrent container can see):
@@ -170,12 +186,45 @@ curl -X POST http://localhost:45263/torrents/add \
   -F "folderPath=/media"
 ```
 
+### Listing torrents and progress
+
+```bash
+curl http://localhost:45263/torrents
+```
+
+```json
+{
+  "count": 1,
+  "torrents": [
+    {
+      "hash": "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c",
+      "name": "Big Buck Bunny",
+      "state": "downloading",
+      "status": "Downloading",
+      "progress": 0.42,
+      "sizeBytes": 276445467,
+      "downloadedBytes": 116107096,
+      "amountLeftBytes": 160338371,
+      "downloadSpeed": 1048576,
+      "uploadSpeed": 2048,
+      "etaSeconds": 153,
+      "savePath": "/media",
+      "addedOnUnixSeconds": 1790020976
+    }
+  ]
+}
+```
+
+`progress` is a ratio between `0` and `1`. `etaSeconds` is `null` when the ETA is unknown
+(for example while seeding or stalled). `state` is qBittorrent's raw state code, while
+`status` is a human readable label derived from it.
+
 Responses:
 
 | Status | Meaning |
 |---|---|
-| `200` | Torrent accepted and download started |
-| `400` | Missing/invalid `.torrent` file or invalid `folderPath` |
+| `200` | Torrent accepted and download started, or list returned |
+| `400` | Missing/invalid `.torrent`, invalid magnet link, or invalid `folderPath` |
 | `502` | qBittorrent rejected the request (invalid torrent, duplicate torrent, bad credentials, or unreachable) |
 | `503` | qBittorrent is not configured |
 
