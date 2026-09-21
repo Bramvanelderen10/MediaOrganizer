@@ -1,6 +1,6 @@
 services:
   media-organizer:
-    image: ghcr.io/bramvanelderen10/mediaorganizer:main
+    image: ghcr.io/bramvanelderen10/mediaorganizer:0.0.13
     container_name: media-organizer
     ports:
       - "45263:45263"
@@ -25,10 +25,11 @@ services:
       - PGID=1000
     restart: unless-stopped
     volumes:
+      # Replace /path/to/your/videos with the host folder holding your media.
       # Keeping both under one mount ensures moves are fast renames (same filesystem).
       - /path/to/your/videos:/media
-      # Persist the SQLite move-history database on the host
-      - media-organizer-data:/data
+      # Binds the history DB next to this compose file, so backing up ./data is enough.
+      - ./data:/data
     depends_on:
       - qbittorrent
     networks:
@@ -47,10 +48,9 @@ services:
       - WEBUI_PORT=8488
       - TORRENTING_PORT=6881
     ports:
-      # Bound to localhost: MediaOrganizer reaches qBittorrent over the docker
-      # network, so the WebUI does not need to be exposed. Use "8488:8488"
-      # instead if you want to open the WebUI from other devices on your LAN.
-      - "127.0.0.1:8488:8488"
+      # Exposes the WebUI on your LAN. Use "127.0.0.1:8488:8488" to keep it local;
+      # MediaOrganizer reaches qBittorrent over the compose network either way.
+      - "8488:8488"
       - "6881:6881"
       - "6881:6881/udp"
     volumes:
@@ -62,7 +62,6 @@ services:
       - local-network
 
 volumes:
-  media-organizer-data:
   qbittorrent-config:
 
 

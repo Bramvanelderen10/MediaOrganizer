@@ -6,7 +6,7 @@ It supports on-demand API triggers, subtitle companion moves, source cleanup, an
 
 ## What this repository contains
 
-- `src/MediaOrganizer`: backend service (worker + API)
+- `src/MediaOrganizer`: backend service (minimal API)
 - `src/MediaOrganizer.Tests`: unit tests for organizer components
 - `src/MediaOrganizer.App`: Flutter companion app (separate README)
 
@@ -21,6 +21,7 @@ It supports on-demand API triggers, subtitle companion moves, source cleanup, an
 - File management API (browse, rename, move, delete)
 - Move history management (forget movies, shows, seasons, episodes)
 - Organized media library view
+- Torrent downloads via qBittorrent (`.torrent` files and magnet links) with a progress listing
 - Live log streaming via Server-Sent Events (SSE)
 - OpenAPI document + Scalar docs UI
 - Docker-ready deployment
@@ -28,47 +29,86 @@ It supports on-demand API triggers, subtitle companion moves, source cleanup, an
 
 ## Quick start (Docker)
 
-Use one mounted parent media folder where source/destination are subfolders on the same filesystem. This keeps moves fast and avoids cross-device move failures.
+Runs MediaOrganizer together with qBittorrent so `.torrent` files and magnet links can be
+downloaded straight into your media folder.
+
+The important detail: **both services mount the same host folder at the same container path**
+(`/media`). qBittorrent resolves its save path in its own namespace, so identical mounts are
+what make downloads land where the organizer scans. Keep source and destination under one
+mount as well, so moves stay fast renames on a single filesystem.
+
+Replace `/media/bram/Expansion/Videos` with the host folder holding your videos.
 
 ```yaml
 services:
   media-organizer:
-    image: ghcr.io/bramvanelderen10/mediaorganizer:main
+    image: ghcr.io/bramvanelderen10/mediaorganizer:0.0.13
     container_name: media-organizer
     ports:
       - "45263:45263"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - TZ=Europe/Amsterdam
-      - MediaOrganizer__SourceFolder=/media/source
-      - MediaOrganizer__DestinationFolder=/media/destination
+      - MediaOrganizer__SourceFolder=/media
       - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
-      # Match PUID/PGID to the host user that owns your media files.
-      # This prevents moved files from being owned by root and becoming
-      # inaccessible (locked) when accessed over SMB from other devices.
-      # Run `id` on your host to find the right values.
+      # Torrent integration (see "Adding torrents" below)
+      - MediaOrganizer__Qbittorrent__Url=http://qbittorrent:8488
+      - MediaOrganizer__Qbittorrent__Username=admin
+      - MediaOrganizer__Qbittorrent__Password=your-webui-password
+      - MediaOrganizer__Qbittorrent__DownloadFolder=/media
+      # Match PUID/PGID to the host user that owns your media files, otherwise moved
+      # files end up root-owned and get locked over SMB. Run `id` on your host.
       - PUID=1000
       - PGID=1000
     restart: unless-stopped
     volumes:
-      - /path/to/your/videos:/media
-      - media-organizer-data:/data
+      - /media/bram/Expansion/Videos:/media
+      # Binds the history DB next to the compose file, so backing up ./data is enough.
+      - ./data:/data
+    depends_on:
+      - qbittorrent
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Amsterdam
+      - WEBUI_PORT=8488        # must match both sides of the port mapping below
+      - TORRENTING_PORT=6881
+    ports:
+      # Exposes the WebUI on your LAN. Use "127.0.0.1:8488:8488" to keep it local
+      # (MediaOrganizer still reaches it over the compose network).
+      - "8488:8488"
+      - "6881:6881"
+      - "6881:6881/udp"
+    volumes:
+      # MUST be identical to the media-organizer mount above.
+      - /media/bram/Expansion/Videos:/media
+      - qbittorrent-config:/config
+    restart: unless-stopped
 
 volumes:
-  media-organizer-data:
+  qbittorrent-config:
 ```
 
-Start:
+Start and verify:
 
 ```bash
 docker compose up -d
-```
-
-Health check:
-
-```bash
 curl http://localhost:45263/health
+
+# First run only: read the temporary qBittorrent password, then log in at
+# http://<host>:8488 and set a permanent one (Tools -> Options -> WebUI -> Authentication).
+docker compose logs qbittorrent
 ```
+
+Set that permanent password as `MediaOrganizer__Qbittorrent__Password`. If you skip this,
+qBittorrent generates a new password on every restart and the integration breaks.
+
+> Prefer your own scheduler? Drop the `qbittorrent` service and the `Qbittorrent` env vars.
+> Torrent endpoints then return `503` and the rest of the service works unchanged.
 
 ## API endpoints
 
@@ -192,34 +232,13 @@ curl -X POST http://localhost:45263/torrents/add \
 curl http://localhost:45263/torrents
 ```
 
-```json
-{
-  "count": 1,
-  "torrents": [
-    {
-      "hash": "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c",
-      "name": "Big Buck Bunny",
-      "state": "downloading",
-      "status": "Downloading",
-      "progress": 0.42,
-      "sizeBytes": 276445467,
-      "downloadedBytes": 116107096,
-      "amountLeftBytes": 160338371,
-      "downloadSpeed": 1048576,
-      "uploadSpeed": 2048,
-      "etaSeconds": 153,
-      "savePath": "/media",
-      "addedOnUnixSeconds": 1790020976
-    }
-  ]
-}
-```
+Returns `{ "count": N, "torrents": [...] }`. Each entry has `hash`, `name`, `state`
+(qBittorrent's raw code), `status` (human readable label derived from it), `progress` (ratio
+`0..1`), `sizeBytes`, `downloadedBytes`, `amountLeftBytes`, `downloadSpeed`, `uploadSpeed`,
+`etaSeconds` (`null` when unknown, e.g. while seeding or stalled), `savePath` and
+`addedOnUnixSeconds`.
 
-`progress` is a ratio between `0` and `1`. `etaSeconds` is `null` when the ETA is unknown
-(for example while seeding or stalled). `state` is qBittorrent's raw state code, while
-`status` is a human readable label derived from it.
-
-Responses:
+Responses for the add endpoints:
 
 | Status | Meaning |
 |---|---|
@@ -228,35 +247,16 @@ Responses:
 | `502` | qBittorrent rejected the request (invalid torrent, duplicate torrent, bad credentials, or unreachable) |
 | `503` | qBittorrent is not configured |
 
-### Download folder and the shared mount
+### Download folder
 
-qBittorrent resolves `savepath` in **its own** filesystem namespace, so for downloads to land
-in the folder MediaOrganizer scans, mount the **same host folder at the same container path**
-in both services (as `docker-compose.yml` does with `/path/to/your/videos:/media`).
+`Qbittorrent:DownloadFolder` is the save path sent to qBittorrent. When empty it falls back to
+`SourceFolder`, so downloads land directly in the mounted volume by default.
 
-`MediaOrganizer__Qbittorrent__DownloadFolder` is the save path sent to qBittorrent. When it is
-left empty, MediaOrganizer falls back to `MediaOrganizer:SourceFolder`, so out of the box
-downloads land directly in the mounted volume.
+> **Never run `POST /trigger-job` while a torrent is downloading.** Downloads go into the
+> source folder, and the organizer deletes directory trees that contain no recognized
+> video/subtitle file. qBittorrent names in-progress files with a `.!qB` suffix, which is not
+> a recognized extension — so an unfinished download could be deleted.
 
-> **Note:** because downloads go straight into the source folder, a file that is still
-> downloading is visible to the organize job. The organizer deletes directory trees that
-> contain no recognized video/subtitle file, and qBittorrent names in-progress files with a
-> `.!qB` suffix — so triggering the job mid-download could remove an unfinished download.
-> **Only run `POST /trigger-job` when no torrent is actively downloading.**
-
-### First-time qBittorrent setup
-
-On first start the LinuxServer image prints a temporary `admin` password to its container log:
-
-```bash
-docker logs qbittorrent
-```
-
-Log in at `http://<host>:8488` (the compose file binds the WebUI to localhost, so use an
-SSH tunnel from another machine: `ssh -L 8488:localhost:8488 user@server`), change the
-password in **Tools → Options → WebUI → Authentication**, and put that permanent password in
-`MediaOrganizer__Qbittorrent__Password`. If you do not change it, a new password is generated
-on every container start.
 ## Organize behavior (summary)
 
 1. Resolve source folder from request override or config
@@ -300,28 +300,29 @@ Settings are under `MediaOrganizer` in `appsettings.json` or environment variabl
 | `SubtitleExtensions` | `.srt,.sub,.ass,.ssa,.vtt,.idx` | Allowed subtitle extensions |
 | `Qbittorrent:Url` | `null` | qBittorrent WebUI base URL (e.g. `http://qbittorrent:8488`). Torrent endpoints return `503` when empty |
 | `Qbittorrent:Username` | `null` | qBittorrent WebUI username |
-| `Qbittorrent:Password` | `null` | qBittorrent WebUI password |
-| `Qbittorrent:DownloadFolder` | `null` (falls back to `SourceFolder`) | Save path sent to qBittorrent |
+| `Qbittorrent:Password` | `null` | qBittorrent WebUI password (set a permanent one; see Quick start) |
+| `Qbittorrent:DownloadFolder` | `null` (falls back to `SourceFolder`) | Save path sent to qBittorrent, in qBittorrent's own namespace |
 | `Qbittorrent:Category` | `null` | Optional category applied to added torrents |
 | `Qbittorrent:Tags` | `null` | Optional comma-separated tags applied to added torrents |
-| `Qbittorrent:RequestTimeoutSeconds` | `60` | Timeout for qBittorrent login/add HTTP calls |
+| `Qbittorrent:RequestTimeoutSeconds` | `60` | Timeout for qBittorrent HTTP calls |
 
-**Docker-only environment variables** (not part of `MediaOrganizer` config section):
+**Docker-only environment variables** (handled by `entrypoint.sh`, not part of the
+`MediaOrganizer` config section):
 
 | Variable | Default | Description |
 |---|---|---|
 | `PUID` | `1000` | User ID the service runs as inside the container |
 | `PGID` | `1000` | Group ID the service runs as inside the container |
 
-Set `PUID`/`PGID` to the UID/GID of the host user that owns your media files (run `id` on your host to find the values). This ensures all moved files keep the correct ownership so they are not locked when accessed over SMB.
+Set `PUID`/`PGID` to the UID/GID of the host user that owns your media files (run `id` on your
+host). This keeps moved files correctly owned so they are not locked over SMB.
 
-Example:
+Example `appsettings.json` (the Docker example above uses environment variables instead):
 
 ```json
 {
   "MediaOrganizer": {
-    "SourceFolder": "/media/source",
-    "DestinationFolder": "/media/destination",
+    "SourceFolder": "/media",
     "MoveHistoryDatabasePath": "/data/move-history.db",
     "VideoExtensions": [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg"],
     "SubtitleExtensions": [".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"],
@@ -337,6 +338,17 @@ Example:
   }
 }
 ```
+
+> `DestinationFolder` is omitted above because it defaults to `SourceFolder`. Set it only if
+> you want organized output somewhere else — for example `SourceFolder=/media/incoming` and
+> `DestinationFolder=/media`.
+
+### Repo `docker-compose.yml` vs. this guide
+
+The committed [`docker-compose.yml`](docker-compose.yml) uses `/path/to/your/videos` as a
+placeholder for your media folder, `change-me` as the qBittorrent password, the moving `:main`
+image tag, and binds the qBittorrent WebUI to `127.0.0.1` only. Replace the placeholders, pin a
+version tag, and switch to `"8488:8488"` if you want LAN access to the WebUI.
 
 ## Development
 
@@ -378,4 +390,9 @@ tools/
 | Service not reachable | Port mapping/firewall for `45263` |
 | Files skipped | Source path exists and extension lists are correct |
 | Duplicate names | Expected behavior; unique suffix is applied |
-| Moved files locked / can't delete via SMB | Container is running as root; set `PUID`/`PGID` env vars to match the host user that owns your media files (run `id` on the host) |
+| Moved files locked / can't delete via SMB | Container is running as root; set `PUID`/`PGID` to match the host user that owns your media files (run `id` on the host) |
+| Torrent endpoints return `503` | `MediaOrganizer__Qbittorrent__Url` is set and qBittorrent is reachable from the container |
+| Torrent endpoints return `502` | Check `docker compose logs media-organizer`; usually bad credentials or qBittorrent rejecting the torrent |
+| qBittorrent login fails after a restart | The temporary password changed. Set a permanent one in **Tools → Options → WebUI → Authentication** and update `Qbittorrent__Password` |
+| Downloads land in the wrong place | `Qbittorrent__DownloadFolder` must be a path **qBittorrent** sees, and both services must mount the same host folder at the same container path |
+| An unfinished download disappeared | The organize job ran mid-download; see the warning under "Download folder" |
