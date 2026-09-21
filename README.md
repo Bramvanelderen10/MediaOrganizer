@@ -89,6 +89,12 @@ curl http://localhost:45263/health
 |---|---|---|
 | POST | `/trigger-job` | Trigger organize job immediately (optional `folderPath` body) |
 
+### Torrents
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/torrents/add` | Upload a `.torrent` file and start downloading it via qBittorrent (optional `folderPath`) |
+
 ### File management
 
 | Method | Path | Description |
@@ -144,6 +150,64 @@ Library overview:
 curl http://localhost:45263/library
 ```
 
+## Adding torrents
+
+`POST /torrents/add` accepts a `.torrent` file as `multipart/form-data` and hands it to
+qBittorrent, which starts downloading it immediately. The organize job is **not** triggered;
+downloaded files are organized the next time the job is run (`POST /trigger-job`).
+
+```bash
+curl -X POST http://localhost:45263/torrents/add \
+  -F "file=@/path/to/movie.torrent"
+```
+
+Optionally override the download folder for a single request (must be an absolute path that
+the qBittorrent container can see):
+
+```bash
+curl -X POST http://localhost:45263/torrents/add \
+  -F "file=@/path/to/movie.torrent" \
+  -F "folderPath=/media"
+```
+
+Responses:
+
+| Status | Meaning |
+|---|---|
+| `200` | Torrent accepted and download started |
+| `400` | Missing/invalid `.torrent` file or invalid `folderPath` |
+| `502` | qBittorrent rejected the request (invalid torrent, duplicate torrent, bad credentials, or unreachable) |
+| `503` | qBittorrent is not configured |
+
+### Download folder and the shared mount
+
+qBittorrent resolves `savepath` in **its own** filesystem namespace, so for downloads to land
+in the folder MediaOrganizer scans, mount the **same host folder at the same container path**
+in both services (as `docker-compose.yml` does with `/path/to/your/videos:/media`).
+
+`MediaOrganizer__Qbittorrent__DownloadFolder` is the save path sent to qBittorrent. When it is
+left empty, MediaOrganizer falls back to `MediaOrganizer:SourceFolder`, so out of the box
+downloads land directly in the mounted volume.
+
+> **Note:** because downloads go straight into the source folder, a file that is still
+> downloading is visible to the organize job. The organizer deletes directory trees that
+> contain no recognized video/subtitle file, and qBittorrent names in-progress files with a
+> `.!qB` suffix — so triggering the job mid-download could remove an unfinished download.
+> **Only run `POST /trigger-job` when no torrent is actively downloading.**
+
+### First-time qBittorrent setup
+
+On first start the LinuxServer image prints a temporary `admin` password to its container log:
+
+```bash
+docker logs qbittorrent
+```
+
+Log in at `http://<host>:8488` (the compose file binds the WebUI to localhost, so use an
+SSH tunnel from another machine: `ssh -L 8488:localhost:8488 user@server`), change the
+password in **Tools → Options → WebUI → Authentication**, and put that permanent password in
+`MediaOrganizer__Qbittorrent__Password`. If you do not change it, a new password is generated
+on every container start.
 ## Organize behavior (summary)
 
 1. Resolve source folder from request override or config
@@ -185,6 +249,13 @@ Settings are under `MediaOrganizer` in `appsettings.json` or environment variabl
 | `MoveHistoryDatabasePath` | `data/move-history.db` | SQLite history DB path |
 | `VideoExtensions` | `.mp4,.mkv,.avi,.mov,.wmv,.m4v,.webm,.ts,.mpg,.mpeg` | Allowed video extensions |
 | `SubtitleExtensions` | `.srt,.sub,.ass,.ssa,.vtt,.idx` | Allowed subtitle extensions |
+| `Qbittorrent:Url` | `null` | qBittorrent WebUI base URL (e.g. `http://qbittorrent:8488`). Torrent endpoints return `503` when empty |
+| `Qbittorrent:Username` | `null` | qBittorrent WebUI username |
+| `Qbittorrent:Password` | `null` | qBittorrent WebUI password |
+| `Qbittorrent:DownloadFolder` | `null` (falls back to `SourceFolder`) | Save path sent to qBittorrent |
+| `Qbittorrent:Category` | `null` | Optional category applied to added torrents |
+| `Qbittorrent:Tags` | `null` | Optional comma-separated tags applied to added torrents |
+| `Qbittorrent:RequestTimeoutSeconds` | `60` | Timeout for qBittorrent login/add HTTP calls |
 
 **Docker-only environment variables** (not part of `MediaOrganizer` config section):
 
@@ -204,7 +275,16 @@ Example:
     "DestinationFolder": "/media/destination",
     "MoveHistoryDatabasePath": "/data/move-history.db",
     "VideoExtensions": [".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg"],
-    "SubtitleExtensions": [".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"]
+    "SubtitleExtensions": [".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"],
+    "Qbittorrent": {
+      "Url": "http://qbittorrent:8488",
+      "Username": "admin",
+      "Password": "your-webui-password",
+      "DownloadFolder": "/media",
+      "Category": "",
+      "Tags": "",
+      "RequestTimeoutSeconds": 60
+    }
   }
 }
 ```

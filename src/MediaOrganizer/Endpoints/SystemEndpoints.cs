@@ -24,12 +24,13 @@ public static class SystemEndpoints
                 delete = "POST /delete",
                 storageInfo = "GET /storage-info",
                 library = "GET /library",
+                addTorrent = "POST /torrents/add",
                 health = "GET /health",
                 streamLogs = "GET /logs/stream",
                 openApiSpec = "GET /openapi/v1.json",
                 apiReference = "GET /scalar/v1"
             },
-            schedule = "Daily at 5:00 AM"
+            schedule = "Manual only (POST /trigger-job)"
         }))
         .WithName("Root")
         .WithSummary("Returns API overview");

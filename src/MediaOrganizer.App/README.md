@@ -6,6 +6,7 @@ It lets you:
 - Configure and persist the API URL
 - Check API health continuously
 - Trigger an organize run
+- Open or share a `.torrent` file with the app and confirm it before downloading
 - Browse, rename, move, and delete files in the source folder
 - View and manage the organized media library
 - Forget move history (movies, shows, seasons, episodes, or batch)
@@ -27,6 +28,22 @@ From [src/MediaOrganizer.App](src/MediaOrganizer.App):
 2. Run the app
 	- `flutter run`
 
+## Opening torrent files
+
+Android registers the app for `application/x-bittorrent` and `application/octet-stream`
+files, so opening a `.torrent` from a file manager or the browser download notification
+offers **Media Organizer** in the "Open with" list. Sharing a `.torrent` file to the app
+works too.
+
+Either way an in-app confirmation dialog shows the file name with a **Cancel** /
+**Download** choice. Nothing is sent until you confirm; on confirm the file is uploaded
+to `POST /torrents/add` and qBittorrent starts downloading it immediately. The organize
+job is not triggered by a torrent download.
+
+Because `application/octet-stream` is a generic type, Android may also offer Media
+Organizer for other unknown file types. The app filters these out and only acts on
+`.torrent` files.
+
 ## First-time setup
 
 On first launch, enter your MediaOrganizer API address, for example:
@@ -45,6 +62,7 @@ The app stores this value in local preferences. You can clear it via **Reset API
 | GET | `/library` | Organized media library structure |
 | GET | `/browse` | Source folder directory listing |
 | POST | `/trigger-job` | Trigger organize job |
+| POST | `/torrents/add` | Upload a `.torrent` file and start the download |
 | POST | `/rename` | Rename file or directory |
 | POST | `/move` | Move file or directory |
 | POST | `/delete` | Delete files or directories |

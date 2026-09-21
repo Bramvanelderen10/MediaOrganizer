@@ -8,8 +8,6 @@ public class MediaOrganizerOptions
 
     public string MoveHistoryDatabasePath { get; set; } = "data/move-history.db";
 
-    public string CronSchedule { get; set; } = "0 5 * * *";
-
     public string[] VideoExtensions { get; set; } =
     [
         ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".m4v", ".webm", ".ts", ".mpg", ".mpeg"
@@ -19,5 +17,7 @@ public class MediaOrganizerOptions
     [
         ".srt", ".sub", ".ass", ".ssa", ".vtt", ".idx"
     ];
+
+    public QbittorrentOptions Qbittorrent { get; set; } = new();
 }
 

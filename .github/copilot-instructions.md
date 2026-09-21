@@ -1,9 +1,10 @@
 # MediaOrganizer
 
-.NET 10 minimal API service that automatically organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). Exposes HTTP endpoints for on-demand triggering, file management, history management, and health checks. Uses SQLite to track move history for idempotency. Includes a Flutter companion app.
+.NET 10 minimal API service that organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). The organize job runs **on demand only** (`POST /trigger-job`) — there is no scheduler. Exposes HTTP endpoints for on-demand triggering, file management, history management, torrent uploading, and health checks. Uses SQLite to track move history for idempotency. Includes a Flutter companion app.
 
 ## Project Type
-- ASP.NET Core Minimal API
+- ASP.NET Core Minimal API with a hosted Kestrel listener
+- On-demand organize job (no scheduler/cron)
 - SQLite move-history database for idempotent moves
 - Docker deployment ready
 - Flutter companion app (mobile/desktop/web)
@@ -14,7 +15,7 @@
 - Entity Framework Core with SQLite (move history)
 - Microsoft.AspNetCore.OpenApi (built-in OpenAPI document generation)
 - Scalar.AspNetCore (interactive API documentation UI)
-- NCrontab (cron expression parsing)
+- IHttpClientFactory / HttpClient (qBittorrent WebUI integration)
 - Docker (multi-stage build with gosu for privilege de-escalation)
 
 ## Configuration (`MediaOrganizer` section)
@@ -24,9 +25,15 @@
 | `SourceFolder` | `string?` | `null` | Root folder to scan for unorganized media |
 | `DestinationFolder` | `string?` | `null` | Root folder for organized output (falls back to `SourceFolder` if null) |
 | `MoveHistoryDatabasePath` | `string` | `"data/move-history.db"` | SQLite database file path |
-| `CronSchedule` | `string` | `"0 5 * * *"` (daily 5 AM) | NCrontab cron expression |
 | `VideoExtensions` | `string[]` | `.mp4,.mkv,.avi,.mov,.wmv,.m4v,.webm,.ts,.mpg,.mpeg` | Allowed video file extensions |
 | `SubtitleExtensions` | `string[]` | `.srt,.sub,.ass,.ssa,.vtt,.idx` | Allowed subtitle file extensions |
+| `Qbittorrent:Url` | `string?` | `null` | qBittorrent WebUI base URL; torrent endpoints return 503 when unset |
+| `Qbittorrent:Username` | `string?` | `null` | qBittorrent WebUI username |
+| `Qbittorrent:Password` | `string?` | `null` | qBittorrent WebUI password |
+| `Qbittorrent:DownloadFolder` | `string?` | `null` | Save path sent to qBittorrent (falls back to `SourceFolder`) |
+| `Qbittorrent:Category` | `string?` | `null` | Optional category for added torrents |
+| `Qbittorrent:Tags` | `string?` | `null` | Optional comma-separated tags for added torrents |
+| `Qbittorrent:RequestTimeoutSeconds` | `int` | `60` | Timeout for qBittorrent HTTP calls |
 
 ## API Endpoints
 
@@ -46,6 +53,12 @@
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/trigger-job` | Trigger organize pipeline immediately (optional `folderPath` body) |
+
+### Torrents
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/torrents/add` | Upload a `.torrent` file (multipart field `file`) and start downloading it via qBittorrent (optional `folderPath` form field). Does not trigger the organize job |
 
 ### File management
 
@@ -85,6 +98,8 @@ All services are registered as **singletons** via DI. Key components:
 | Logging | `LogBroadcaster` | Pub/sub broker for live log streaming via SSE |
 | Logging | `BroadcastLoggerProvider` | Custom `ILoggerProvider` that publishes logs to `LogBroadcaster` |
 | Helpers | `IFileSystem` / `PhysicalFileSystem` | File system abstraction for testability |
+| Torrents | `TorrentService` | Validates uploaded `.torrent` files and resolves the download folder |
+| Torrents | `QbittorrentClient` | qBittorrent WebUI API v2 client (login + `torrents/add`) |
 | Helpers | `PathHelpers` | Unique path generation (`name (1).ext`, `name (2).ext`, ...) |
 
 ## Organize Flow (`MediaFileOrganizer`)
@@ -155,14 +170,14 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 
 ## Move History & Idempotency (`MoveHistoryStore`)
 
-- Each move is tracked as a `MoveHistoryEntry` with `UniqueKey`, `OriginalPath`, `TargetPath`, `IsMoved`, `MovedAt`.
+- Each move is tracked as a `MoveHistoryEntry` with `UniqueKey`, `OriginalFilePath`, `TargetFilePath`, `MoveDateTime`, `IsMoved`.
 - **UniqueKey**: for movies = media name; for shows = `{Name}_Season{NN}_Episode{EE}`.
 - Before creating a plan entry, the builder checks the latest history record by `UniqueKey`:
 	- Same destination + `IsMoved = true` → skip (already done).
 	- Same destination + `IsMoved = false` → already pending, no action.
 	- Different destination → create new record.
 	- No record → create new record.
-- Database indexes on `UniqueKey`, `IsMoved`, and composite `(UniqueKey, TargetPath)`.
+- Database indexes on `UniqueKey`, `IsMoved`, and composite `(UniqueKey, Id)` (descending).
 
 ## Subtitle Handling (`SubtitleMover`)
 
@@ -177,17 +192,20 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 
 ## Directory Cleanup (`DirectoryCleaner`)
 
-### `CleanSourceDirectories`
-- Enumerate all directories under source root (non-recursive stack, skipping symlinks).
-- Compute bottom-up map — a directory has media if it directly contains a media file or any child does.
-- Delete directories (deepest first) that have no media in their subtree.
-- Delete leftover non-media files. Tries non-recursive delete first; falls back to recursive on failure.
+### `CleanupDirectoriesWithoutMedia` (used by the organize flow)
+- Enumerate all directories under the source root with a non-recursive stack, skipping symlinks.
+- Compute bottom-up whether a directory contains media (video/subtitle) directly or in any descendant.
+- Delete directories (deepest first) that have no media in their subtree; on failure it falls back to a
+  recursive delete, so files inside a removed directory are deleted as well.
 
-### `CleanMovedFileDirectories`
-- Collect all directories that had files moved out + ancestors up to source root.
-- Process deepest first: delete remaining files, then remove directory if empty.
+> **Important:** a directory containing only in-progress download files is treated as having no media and
+> is deleted. qBittorrent appends a `.!qB` suffix to incomplete files, which is not a recognized media
+> extension — so never run the organize job while a torrent is downloading.
 
 **Safety**: symlinks are never deleted; enumeration errors default to "keep" behavior.
+
+> `CleanupSourceDirectories(IEnumerable<string> movedSourcePaths, string sourceRoot)` also exists on the
+> class but is currently unreferenced (dead code).
 
 ## Key Patterns
 
@@ -204,7 +222,10 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 
 ## Testing
 
-Tests in `src/MediaOrganizer.Tests/` mock `IFileSystem` for isolated unit testing:
-- `DirectoryCleanerTests`, `MediaGrouperTests`
-- `MovePlanBuilderTests`, `PathHelpersTests`, `SubtitleMoverTests`
+Tests in `src/MediaOrganizer.Tests/` mock `IFileSystem` and `ITorrentClient` for isolated unit testing:
+- `DirectoryCleanerTests`, `MediaGrouperTests`, `MovePlanBuilderTests`
+- `PathHelpersTests`, `SubtitleMoverTests`, `TorrentServiceTests`
 - `VideoFileFinderTests`, `VideoMoverTests`
+
+> Note: `MediaFileRestorerTests` is stale — it targets a `MediaFileRestorer` class that no longer exists,
+> so the test project currently fails to compile until it is deleted or rewritten.
