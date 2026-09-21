@@ -11,7 +11,7 @@ namespace MediaOrganizer.Torrents;
 /// </summary>
 /// <remarks>
 /// This service deliberately never triggers the organize job. Files downloaded into the
-/// source folder are picked up by the scheduled organize run instead.
+/// source folder are organized the next time the organize job is run.
 /// </remarks>
 public class TorrentService
 {

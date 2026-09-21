@@ -30,7 +30,7 @@ public static class SystemEndpoints
                 openApiSpec = "GET /openapi/v1.json",
                 apiReference = "GET /scalar/v1"
             },
-            schedule = "Daily at 5:00 AM"
+            schedule = "Manual only (POST /trigger-job)"
         }))
         .WithName("Root")
         .WithSummary("Returns API overview");

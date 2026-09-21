@@ -11,7 +11,7 @@ services:
       - MediaOrganizer__MoveHistoryDatabasePath=/data/move-history.db
       # qBittorrent integration: lets POST /torrents/add hand a .torrent file to qBittorrent.
       # "qbittorrent" resolves through the shared local-network below.
-      - MediaOrganizer__Qbittorrent__Url=http://qbittorrent:8080
+      - MediaOrganizer__Qbittorrent__Url=http://qbittorrent:8488
       - MediaOrganizer__Qbittorrent__Username=admin
       # Set the permanent WebUI password here after the first login (see README).
       - MediaOrganizer__Qbittorrent__Password=change-me
@@ -44,10 +44,13 @@ services:
       - PGID=1000
       - TZ=Europe/Amsterdam
       # WEBUI_PORT must match both sides of the port mapping below (CSRF protection).
-      - WEBUI_PORT=8080
+      - WEBUI_PORT=8488
       - TORRENTING_PORT=6881
     ports:
-      - "8080:8080"
+      # Bound to localhost: MediaOrganizer reaches qBittorrent over the docker
+      # network, so the WebUI does not need to be exposed. Use "8488:8488"
+      # instead if you want to open the WebUI from other devices on your LAN.
+      - "127.0.0.1:8488:8488"
       - "6881:6881"
       - "6881:6881/udp"
     volumes:

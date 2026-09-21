@@ -22,7 +22,7 @@ public class TorrentServiceTests
         Encoding.Latin1.GetBytes("d4:infod4:name4:testee");
 
     private TorrentService CreateService(
-        string? url = "http://qbittorrent:8080",
+        string? url = "http://qbittorrent:8488",
         string? sourceFolder = "/media",
         string? downloadFolder = null)
     {
@@ -190,7 +190,7 @@ public class TorrentServiceTests
     [Fact]
     public void IsConfigured_ReflectsConfiguredUrl()
     {
-        Assert.True(CreateService(url: "http://qbittorrent:8080").IsConfigured);
+        Assert.True(CreateService(url: "http://qbittorrent:8488").IsConfigured);
         Assert.False(CreateService(url: null).IsConfigured);
         Assert.False(CreateService(url: "  ").IsConfigured);
     }

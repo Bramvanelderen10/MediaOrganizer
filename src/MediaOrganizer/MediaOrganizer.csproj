@@ -10,7 +10,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.*" />
-    <PackageReference Include="NCrontab" Version="3.3.3" />
     <PackageReference Include="Scalar.AspNetCore" Version="1.*" />
   </ItemGroup>
 

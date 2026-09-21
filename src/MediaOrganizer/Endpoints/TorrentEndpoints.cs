@@ -64,6 +64,6 @@ public static class TorrentEndpoints
         .Accepts<IFormFile>("multipart/form-data")
         .WithName("AddTorrent")
         .WithSummary("Adds a .torrent file to qBittorrent and starts the download")
-        .WithDescription("Accepts a multipart/form-data upload with a .torrent file in the 'file' field. Optional 'folderPath' form field overrides the configured download folder. The organize job is not triggered; downloaded files are picked up by the scheduled run.");
+        .WithDescription("Accepts a multipart/form-data upload with a .torrent file in the 'file' field. Optional 'folderPath' form field overrides the configured download folder. The organize job is not triggered; downloads are organized the next time /trigger-job runs.");
     }
 }

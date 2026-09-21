@@ -6,7 +6,7 @@ namespace MediaOrganizer.Configuration;
 /// </summary>
 public class QbittorrentOptions
 {
-    /// <summary>Base URL of the qBittorrent WebUI, e.g. http://qbittorrent:8080.</summary>
+    /// <summary>Base URL of the qBittorrent WebUI, e.g. http://qbittorrent:8488.</summary>
     public string? Url { get; set; }
 
     /// <summary>WebUI username used to log in.</summary>

@@ -1,21 +1,20 @@
 # MediaOrganizer
 
-.NET 10 worker service that automatically organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). Runs on a cron schedule and exposes HTTP endpoints for on-demand triggering, restoring files, and health checks. Uses SQLite to track move history for idempotency and restore capability.
+.NET 10 service that organizes video and subtitle files from a flat/messy source folder into a structured media library (movies and TV shows). The organize job runs **on demand only** (`POST /trigger-job`) — there is no scheduler. It also exposes HTTP endpoints for browsing/editing source files, managing move history, uploading `.torrent` files, and health checks. Uses SQLite to track move history for idempotency.
 
 ## Project Type
-- Worker Service with ASP.NET Core Minimal API
-- Scheduled background tasks (cron-based)
-- SQLite move-history database for idempotent moves and restore
+- ASP.NET Core Minimal API with a hosted Kestrel listener
+- On-demand organize job (no scheduler/cron)
+- SQLite move-history database for idempotent moves
 - Docker deployment ready
 
 ## Technology Stack
 - .NET 10
 - ASP.NET Core Minimal API (port 45263)
-- BackgroundService for cron scheduling
 - Entity Framework Core with SQLite (move history)
 - Microsoft.AspNetCore.OpenApi (built-in OpenAPI document generation)
 - Scalar.AspNetCore (interactive API documentation UI)
-- NCrontab (cron scheduling)
+- IHttpClientFactory / HttpClient (qBittorrent WebUI integration)
 - Docker (multi-stage build)
 
 ## Configuration (`MediaOrganizer` section)
@@ -25,7 +24,6 @@
 | `SourceFolder` | `string?` | `null` | Root folder to scan for unorganized media |
 | `DestinationFolder` | `string?` | `null` | Root folder for organized output (falls back to `SourceFolder` if null) |
 | `MoveHistoryDatabasePath` | `string` | `"data/move-history.db"` | SQLite database file path |
-| `CronSchedule` | `string` | `"0 5 * * *"` (daily 5 AM) | NCrontab cron expression |
 | `VideoExtensions` | `string[]` | `.mp4,.mkv,.avi,.mov,.wmv,.m4v,.webm,.ts,.mpg,.mpeg` | Allowed video file extensions |
 | `SubtitleExtensions` | `string[]` | `.srt,.sub,.ass,.ssa,.vtt,.idx` | Allowed subtitle file extensions |
 | `Qbittorrent:Url` | `string?` | `null` | qBittorrent WebUI base URL; torrent endpoints return 503 when unset |
@@ -40,13 +38,24 @@
 
 | Method | Path | Description |
 |---|---|---|
-| `GET /` | | API overview with available endpoints and schedule |
-| `GET /health` | | Health check with timestamp |
-| `POST /trigger-job` | | Trigger organize pipeline immediately (optional `folderPath` body) |
-| `POST /torrents/add` | | Upload a `.torrent` file (multipart form field `file`) and start downloading it via qBittorrent; optional `folderPath` form field |
-| `POST /restore-folder-structure` | | Revert all tracked moves back to original locations |
-| `GET /openapi/v1.json` | | OpenAPI spec |
-| `GET /scalar/v1` | | Scalar interactive API documentation |
+| `GET` | `/` | API overview with the available endpoint list |
+| `GET` | `/health` | Health check with timestamp |
+| `GET` | `/storage-info` | Disk total/used/free bytes for the destination (or source) folder |
+| `GET` | `/logs/stream` | Live application logs as Server-Sent Events (`?tail=200`) |
+| `POST` | `/trigger-job` | Trigger the organize pipeline immediately (optional `folderPath` body) |
+| `POST` | `/torrents/add` | Upload a `.torrent` file (multipart form field `file`) and start downloading it via qBittorrent; optional `folderPath` form field |
+| `GET` | `/library` | Organized library derived from move history |
+| `GET` | `/browse` | List directory contents under the source folder (`?path=sub/dir`) |
+| `POST` | `/rename` | Rename a file/directory under the source folder |
+| `POST` | `/move` | Move a file/directory to another folder under the source root |
+| `POST` | `/delete` | Delete one or more paths under the source folder |
+| `POST` | `/forget-movie` | Delete move-history for a movie |
+| `POST` | `/forget-show` | Delete all move-history for a show |
+| `POST` | `/forget-show-season` | Delete move-history for a show season |
+| `POST` | `/forget-episode` | Delete move-history for a single episode |
+| `POST` | `/forget-batch` | Delete move-history for multiple items at once |
+| `GET` | `/openapi/v1.json` | OpenAPI spec |
+| `GET` | `/scalar/v1` | Scalar interactive API documentation |
 
 ## Architecture
 
@@ -54,10 +63,8 @@ All services are registered as **singletons** via DI. Key components:
 
 | Namespace | Class | Role |
 |---|---|---|
-| Orchestration | `ScheduledJobService` | BackgroundService; polls every minute, triggers on cron match |
 | Orchestration | `JobExecutor` | Wraps `MediaFileOrganizer`, logging |
 | Orchestration | `MediaFileOrganizer` | Main orchestrator for the organize flow |
-| Orchestration | `MediaFileRestorer` | Orchestrator for restoring files to original locations |
 | Discovery | `VideoFileFinder` | Recursive file discovery, filters by extension |
 | Parsing | `MediaGrouper` | Parses filenames, groups by title similarity (Levenshtein ≥ 0.80) |
 | Planning | `MovePlanBuilder` | Builds move plan against history DB, computes destinations |
@@ -137,22 +144,14 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 
 ## Move History & Idempotency (`MoveHistoryStore`)
 
-- Each move is tracked as a `MoveHistoryEntry` with `UniqueKey`, `OriginalPath`, `TargetPath`, `IsMoved`, `MovedAt`.
-- **UniqueKey**: for movies = media name; for shows = `{Name}|{Season}|{Episode}`.
+- Each move is tracked as a `MoveHistoryEntry` with `UniqueKey`, `OriginalFilePath`, `TargetFilePath`, `MoveDateTime`, `IsMoved`.
+- **UniqueKey**: for movies = media name; for shows = `{Name}_Season{NN}_Episode{NN}`.
 - Before creating a plan entry, the builder checks the latest history record by `UniqueKey`:
 	- Same destination + `IsMoved = true` → skip (already done).
 	- Same destination + `IsMoved = false` → already pending, no action.
 	- Different destination → create new record.
 	- No record → create new record.
-- Database indexes on `UniqueKey`, `IsMoved`, and composite `(UniqueKey, TargetPath)`.
-
-## Restore Flow (`MediaFileRestorer`)
-
-1. Query all entries with `IsMoved = true` (ordered by descending ID).
-2. For each entry: skip if target file no longer exists or original path already occupied.
-3. Move file from `TargetPath` back to `OriginalPath`.
-4. Set `IsMoved = false` in database.
-5. Return summary with restored/skipped/failed counts.
+- Database indexes on `UniqueKey`, `IsMoved`, and composite `(UniqueKey, Id)` (descending).
 
 ## Subtitle Handling (`SubtitleMover`)
 
@@ -167,17 +166,20 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 
 ## Directory Cleanup (`DirectoryCleaner`)
 
-### `CleanSourceDirectories`
-- Enumerate all directories under source root (non-recursive stack, skipping symlinks).
-- Compute bottom-up map — a directory has media if it directly contains a media file or any child does.
-- Delete directories (deepest first) that have no media in their subtree.
-- Delete leftover non-media files. Tries non-recursive delete first; falls back to recursive on failure.
+### `CleanupDirectoriesWithoutMedia` (used by the organize flow)
+- Enumerate all directories under the source root with a non-recursive stack, skipping symlinks.
+- Compute bottom-up whether a directory contains media (video/subtitle) directly or in any descendant.
+- Delete directories (deepest first) that have no media in their subtree; on failure it falls back to a
+  recursive delete, so files inside a removed directory are deleted as well.
 
-### `CleanMovedFileDirectories`
-- Collect all directories that had files moved out + ancestors up to source root.
-- Process deepest first: delete remaining files, then remove directory if empty.
+> **Important:** a directory containing only in-progress download files is treated as having no media and
+> is deleted. qBittorrent appends a `.!qB` suffix to incomplete files, which is not a recognized media
+> extension — so never run the organize job while a torrent is downloading.
 
 **Safety**: symlinks are never deleted; enumeration errors default to "keep" behavior.
+
+> `CleanupSourceDirectories(IEnumerable<string> movedSourcePaths, string sourceRoot)` also exists on the
+> class but is currently unreferenced (dead code).
 
 ## Key Patterns
 
@@ -187,14 +189,16 @@ Parent folder name is also parsed as a fallback source for the pattern. If the i
 | DI / Singleton | All services registered as singletons |
 | `IDbContextFactory` | Thread-safe EF Core usage from singletons |
 | `IFileSystem` abstraction | All file operations go through `IFileSystem` for testability |
-| BackgroundService | `ScheduledJobService` for cron polling loop (1-minute interval) |
 | Record types | `ParsedVideoFile`, `Episode`, `MovePlanItem`, `MovedFileInfo`, summaries |
 | Levenshtein similarity | Title grouping with 80% threshold |
 | Idempotent moves | History DB tracks `UniqueKey` + `TargetPath` to skip already-moved files |
 
 ## Testing
 
-Tests in `src/MediaOrganizer.Tests/` mock `IFileSystem` for isolated unit testing:
-- `DirectoryCleanerTests`, `MediaFileRestorerTests`, `MediaGrouperTests`
-- `MovePlanBuilderTests`, `PathHelpersTests`, `SubtitleMoverTests`
+Tests in `src/MediaOrganizer.Tests/` mock `IFileSystem` and `ITorrentClient` for isolated unit testing:
+- `DirectoryCleanerTests`, `MediaGrouperTests`, `MovePlanBuilderTests`
+- `PathHelpersTests`, `SubtitleMoverTests`, `TorrentServiceTests`
 - `VideoFileFinderTests`, `VideoMoverTests`
+
+> Note: `MediaFileRestorerTests` is stale — it targets a `MediaFileRestorer` class that no longer exists,
+> so the test project currently fails to compile until it is deleted or rewritten.
