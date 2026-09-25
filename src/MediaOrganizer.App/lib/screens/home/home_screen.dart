@@ -14,7 +14,6 @@ import 'widgets/api_status_header.dart';
 import 'widgets/forget_season_dialog.dart';
 import 'widgets/log_stream_container.dart';
 import 'widgets/organize_button.dart';
-import 'widgets/transcode_button.dart';
 
 enum _AppMenuAction {
   library,
@@ -47,7 +46,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final ApiService _api;
   bool _isLoading = false;
-  bool _isTranscoding = false;
   bool _isTorrentDialogVisible = false;
 
   Timer? _healthTimer;
@@ -261,7 +259,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _triggerOrganize() async {
-    if (_isTranscoding) return;
     setState(() => _isLoading = true);
 
     try {
@@ -284,66 +281,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  Future<void> _triggerTranscode() async {
-    if (_isLoading) return;
-    setState(() => _isTranscoding = true);
-
-    try {
-      final summary = await _api.transcode();
-      if (!mounted) return;
-
-      final transcoded = summary['transcodedFiles'] ?? 0;
-      final skipped = summary['skippedFiles'] ?? 0;
-      final failed = summary['failedFiles'] ?? 0;
-      final hasFailures = failed is int && failed > 0;
-
-      final parts = <String>[
-        'Transcoded $transcoded file(s)',
-        '$skipped already compatible',
-        if (hasFailures) '$failed failed',
-      ];
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(parts.join(', ')),
-          backgroundColor: hasFailures ? Colors.orange : Colors.green,
-        ),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_transcodeErrorMessage(e)),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to transcode: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _isTranscoding = false);
-    }
-  }
-
-  /// Turns an [ApiException] from POST /transcode into a user-facing message.
-  String _transcodeErrorMessage(ApiException e) {
-    if (e.isNotFound) {
-      return 'This server does not support transcoding yet. '
-          'Update MediaOrganizer on the server.';
-    }
-    if (e.isNotConfigured) {
-      return e.serverMessage ??
-          'Transcoding is disabled on the server. '
-              'Set MediaOrganizer:Transcoding:Enabled=true.';
-    }
-    return e.serverMessage ?? 'Transcoding failed (${e.statusCode}).';
   }
 
   Future<void> _resetConfig() async {
@@ -463,16 +400,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   OrganizeButton(
                     isLoading: _isLoading,
                     isApiHealthy: _isApiHealthy,
-                    isDisabled: _isTranscoding,
                     apiUnavailableMessage: _apiUnavailableMessage,
                     onPressed: _triggerOrganize,
-                  ),
-                  const SizedBox(height: 12),
-                  TranscodeButton(
-                    isLoading: _isTranscoding,
-                    isApiHealthy: _isApiHealthy,
-                    isDisabled: _isLoading,
-                    onPressed: _triggerTranscode,
                   ),
                   const SizedBox(height: 16),
                   LogStreamContainer(

@@ -318,9 +318,10 @@ Enable it via the Quick start compose above:
 - On 5th-gen (Broadwell) and older Intel GPUs, add `LIBVA_DRIVER_NAME=i965` if the default
   iHD driver cannot encode; newer GPUs can leave it unset
 
-Transcoding runs on demand only — it is **not** part of the organize job. Trigger it with
-`POST /transcode` (or the "Transcode videos" button in the companion app, below the organize
-button). The endpoint scans the media library and converts every file that is not already in
+Transcoding runs on demand only — it is **not** part of the organize job, and it is not exposed
+on the app's home screen. Trigger it with `POST /transcode`, or from the transcode button next
+to any show, season, movie or episode on the companion app's Library screen. Without a body the
+endpoint scans the media library and converts every file that is not already in
 `Transcoding:TargetCodec`, so re-running it is cheap and idempotent.
 
 To convert a single movie, episode, season or show, pass the file paths explicitly:

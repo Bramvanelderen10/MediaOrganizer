@@ -6,7 +6,7 @@ It lets you:
 - Configure and persist the API URL
 - Check API health continuously
 - Trigger an organize run
-- Transcode media files that are not yet in the target codec (button below the organize button)
+- Transcode individual shows, seasons, movies or episodes from the Library screen
 - Open or share a `.torrent` file or magnet link with the app and confirm it before downloading
 - View all torrents with live download progress
 - Browse, rename, move, and delete files in the source folder
@@ -60,20 +60,18 @@ screen is open; pull down or tap the refresh icon to refresh manually.
 
 ## Codec transcoding
 
-The home screen has a **Transcode videos** button below **Organize videos**. It calls
-`POST /transcode`, which asks the server to scan the media library and re-encode every file
-whose codec is not the configured target codec (e.g. HEVC to H.264 so an older GPU can play
-it). Because it skips files that are already in the target codec, it is safe to run repeatedly.
+Open the **Library** screen and use the transcode button next to any show, season, movie or
+episode. It asks the server to re-encode just that item (e.g. HEVC to H.264 so an older GPU can
+play it) and sends that item's file paths (`{"paths": [...]}`), so you can convert one title
+without scanning the whole library. Because files already in the target codec are skipped, it is
+safe to run repeatedly.
 
-The **Library** screen also has a transcode button next to every show, season, movie and
-episode. Those send just that item's file paths (`{"paths": [...]}`), so you can convert one
-title without scanning the whole library. A confirmation dialog warns that the originals are
-replaced (unless the server is configured to keep originals). Per-item transcodes require a
-server that supports the `paths` body (newer builds).
+A confirmation dialog warns that the original files are replaced (unless the server is
+configured to keep originals), and a spinner replaces the button while that item is transcoding.
+Transcoding is not exposed on the home screen — the Library buttons are the only entry point.
 
 The server must have transcoding enabled (`MediaOrganizer:Transcoding:Enabled=true`); if it is
-not, the app shows the server's message. While either job is running the other button is
-disabled so the two do not overlap.
+not, the app shows the server's message.
 
 ## Older servers
 
