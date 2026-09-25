@@ -19,5 +19,11 @@ public class MediaOrganizerOptions
     ];
 
     public QbittorrentOptions Qbittorrent { get; set; } = new();
+
+    /// <summary>
+    /// Optional ffmpeg transcoding step that converts unsupported codecs (e.g. HEVC) to a
+    /// codec the host hardware can play (H.264). Disabled by default.
+    /// </summary>
+    public TranscodingOptions Transcoding { get; set; } = new();
 }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 class OrganizeButton extends StatelessWidget {
   final bool isLoading;
   final bool isApiHealthy;
+  final bool isDisabled;
   final String? apiUnavailableMessage;
   final VoidCallback onPressed;
 
@@ -10,13 +11,14 @@ class OrganizeButton extends StatelessWidget {
     super.key,
     required this.isLoading,
     required this.isApiHealthy,
+    this.isDisabled = false,
     this.apiUnavailableMessage,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    final canOrganize = !isLoading && isApiHealthy;
+    final canOrganize = !isLoading && isApiHealthy && !isDisabled;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

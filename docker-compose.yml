@@ -4,6 +4,12 @@ services:
     container_name: media-organizer
     ports:
       - "45263:45263"
+    # Hardware transcoding: give the container access to the Intel GPU render node so
+    # ffmpeg can use VA-API (h264_vaapi) or Quick Sync (h264_qsv). Requires /dev/dri on
+    # the host (run `ls -l /dev/dri`). Remove this block and set Transcoding__Encoder to
+    # libx264 (or Transcoding__Enabled to false) when the host has no GPU.
+    devices:
+      - /dev/dri:/dev/dri
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - TZ=Europe/Amsterdam
@@ -23,6 +29,19 @@ services:
       # Run `id` on your host to find the right values.
       - PUID=1000
       - PGID=1000
+      # --- Optional codec transcoding (e.g. HEVC -> H.264) for hosts that cannot play HEVC ---
+      # Scans the media library and re-encodes files that are not already in the target codec.
+      # Triggered on demand via POST /transcode (or the button in the companion app).
+      - MediaOrganizer__Transcoding__Enabled=true
+      # h264_vaapi works with most Intel GPUs (5th gen+). Use h264_qsv for Quick Sync or
+      # libx264 for pure CPU encoding (no /dev/dri needed, much slower).
+      - MediaOrganizer__Transcoding__Encoder=h264_vaapi
+      - MediaOrganizer__Transcoding__HardwareDevice=/dev/dri/renderD128
+      # Match these to the host groups that own /dev/dri (run: ls -ln /dev/dri).
+      - VIDEO_GID=44
+      - RENDER_GID=992
+      # 5th-gen (Broadwell) / older Intel GPUs: uncomment to use the legacy i965 driver.
+      # - LIBVA_DRIVER_NAME=i965
     restart: unless-stopped
     volumes:
       # Replace /path/to/your/videos with the host folder holding your media.

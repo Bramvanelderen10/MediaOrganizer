@@ -19,8 +19,16 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install gosu for privilege de-escalation so that moved files are owned by
 # the host user (PUID/PGID) rather than root, preventing SMB lock-out.
+# ffmpeg + Intel VA-API drivers power the optional transcoding step (HEVC -> H.264).
+# i965-va-driver covers older Intel GPUs (Gen8 / 5th gen); intel-media-va-driver
+# covers Gen9 (Skylake) and newer. vainfo is handy for verifying GPU access.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gosu \
+    && apt-get install -y --no-install-recommends \
+        gosu \
+        ffmpeg \
+        intel-media-va-driver \
+        i965-va-driver \
+        vainfo \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .

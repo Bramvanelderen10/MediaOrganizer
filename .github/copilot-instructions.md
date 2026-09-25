@@ -34,6 +34,16 @@
 | `Qbittorrent:Category` | `string?` | `null` | Optional category for added torrents |
 | `Qbittorrent:Tags` | `string?` | `null` | Optional comma-separated tags for added torrents |
 | `Qbittorrent:RequestTimeoutSeconds` | `int` | `60` | Timeout for qBittorrent HTTP calls |
+| `Transcoding:Enabled` | `bool` | `false` | Master switch for the optional ffmpeg transcoding step |
+| `Transcoding:Encoder` | `string` | `h264_vaapi` | ffmpeg encoder: `h264_vaapi`, `h264_qsv`, `libx264` |
+| `Transcoding:HardwareDevice` | `string` | `/dev/dri/renderD128` | Render node passed to the hardware encoder |
+| `Transcoding:Quality` | `int` | `22` | `-global_quality` (hardware) / `-crf` (libx264) |
+| `Transcoding:Preset` | `string` | `medium` | Encoder preset, libx264 only |
+| `Transcoding:OnlyCodecs` | `string[]` | `hevc,h265,mpeg2video,vc1,av1,vp9` | Source codecs that trigger a transcode (empty = any non-target codec) |
+| `Transcoding:TargetCodec` | `string` | `h264` | Output codec; used to skip already-compatible files |
+| `Transcoding:KeepOriginal` | `bool` | `false` | Write a sibling `*.h264` file instead of replacing |
+| `Transcoding:AllowSoftwareFallback` | `bool` | `true` | Retry with libx264 when hardware encoding fails |
+| `Transcoding:TimeoutSeconds` | `int` | `3600` | Max seconds per ffmpeg/ffprobe call |
 
 ## API Endpoints
 
@@ -53,6 +63,8 @@
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/trigger-job` | Trigger organize pipeline immediately (optional `folderPath` body) |
+| `POST` | `/transcode` | Re-encode media files whose codec is not the configured target codec. Omit the body to scan the library, or pass `{ "paths": ["..."] }` to transcode specific files |
+| `GET` | `/transcode/status` | Report transcoding configuration and hardware availability |
 
 ### Torrents
 
@@ -89,6 +101,7 @@ All services are registered as **singletons** via DI. Key components:
 | Namespace | Class | Role |
 |---|---|---|
 | Orchestration | `JobExecutor` | Wraps `MediaFileOrganizer` with logging |
+| Orchestration | `JobLock` | Serializes the organize and transcode jobs; a second concurrent job gets HTTP 409 |
 | Orchestration | `MediaFileOrganizer` | Main orchestrator for the organize flow |
 | Discovery | `VideoFileFinder` | Recursive file discovery, filters by extension |
 | Parsing | `MediaGrouper` | Parses filenames, groups by title similarity (Levenshtein ≥ 0.80) |
@@ -100,8 +113,13 @@ All services are registered as **singletons** via DI. Key components:
 | Logging | `LogBroadcaster` | Pub/sub broker for live log streaming via SSE |
 | Logging | `BroadcastLoggerProvider` | Custom `ILoggerProvider` that publishes logs to `LogBroadcaster` |
 | Helpers | `IFileSystem` / `PhysicalFileSystem` | File system abstraction for testability |
+| Helpers | `TranscodeTempFiles` | Marks in-progress `.transcode.<ext>` sidecar files; discovery and the transcoder ignore them |
 | Torrents | `TorrentService` | Validates uploaded `.torrent` files and magnet links, resolves the download folder |
 | Torrents | `QbittorrentClient` | qBittorrent WebUI API v2 client (login, `torrents/add`, `torrents/info`) |
+| Transcoding | `TranscodeService` | Scans media files, probes codec, delegates to `ITranscoder` |
+| Transcoding | `FfmpegTranscoder` | Builds/runs the ffmpeg command (VA-API/QSV/libx264), safe temp-file replace |
+| Transcoding | `FfprobeVideoProbe` | Reads video codec via `ffprobe`, checks encoder availability |
+| Transcoding | `IProcessRunner` / `PhysicalProcessRunner` | External process abstraction for ffmpeg/ffprobe |
 | Helpers | `PathHelpers` | Unique path generation (`name (1).ext`, `name (2).ext`, ...) |
 
 ## Organize Flow (`MediaFileOrganizer`)

@@ -6,6 +6,7 @@ It lets you:
 - Configure and persist the API URL
 - Check API health continuously
 - Trigger an organize run
+- Transcode media files that are not yet in the target codec (button below the organize button)
 - Open or share a `.torrent` file or magnet link with the app and confirm it before downloading
 - View all torrents with live download progress
 - Browse, rename, move, and delete files in the source folder
@@ -57,6 +58,23 @@ acts on `.torrent` files and `magnet:` links.
 status, transferred size, speed and ETA. The list refreshes every few seconds while the
 screen is open; pull down or tap the refresh icon to refresh manually.
 
+## Codec transcoding
+
+The home screen has a **Transcode videos** button below **Organize videos**. It calls
+`POST /transcode`, which asks the server to scan the media library and re-encode every file
+whose codec is not the configured target codec (e.g. HEVC to H.264 so an older GPU can play
+it). Because it skips files that are already in the target codec, it is safe to run repeatedly.
+
+The **Library** screen also has a transcode button next to every show, season, movie and
+episode. Those send just that item's file paths (`{"paths": [...]}`), so you can convert one
+title without scanning the whole library. A confirmation dialog warns that the originals are
+replaced (unless the server is configured to keep originals). Per-item transcodes require a
+server that supports the `paths` body (newer builds).
+
+The server must have transcoding enabled (`MediaOrganizer:Transcoding:Enabled=true`); if it is
+not, the app shows the server's message. While either job is running the other button is
+disabled so the two do not overlap.
+
 ## Older servers
 
 If the server runs an older MediaOrganizer build that predates these features, the app
@@ -82,6 +100,8 @@ The app stores this value in local preferences. You can clear it via **Reset API
 | GET | `/library` | Organized media library structure |
 | GET | `/browse` | Source folder directory listing |
 | POST | `/trigger-job` | Trigger organize job |
+| POST | `/transcode` | Transcode files not yet in the target codec (optional `paths` body for single items) |
+| GET | `/transcode/status` | Transcoding config + hardware availability |
 | GET | `/torrents` | List torrents with progress |
 | POST | `/torrents/add` | Upload a `.torrent` file and start the download |
 | POST | `/torrents/add-magnet` | Add a magnet link and start the download |

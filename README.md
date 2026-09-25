@@ -25,6 +25,7 @@ It supports on-demand API triggers, subtitle companion moves, source cleanup, an
 - Live log streaming via Server-Sent Events (SSE)
 - OpenAPI document + Scalar docs UI
 - Docker-ready deployment
+- Optional ffmpeg transcoding of unsupported codecs (e.g. HEVC → H.264) using Intel VA-API / Quick Sync hardware acceleration, with a libx264 software fallback
 - Flutter companion app (mobile/desktop/web)
 
 ## Quick start (Docker)
@@ -60,6 +61,17 @@ services:
       # files end up root-owned and get locked over SMB. Run `id` on your host.
       - PUID=1000
       - PGID=1000
+      # Optional: re-encode codecs your hardware cannot play (e.g. HEVC -> H.264).
+      - MediaOrganizer__Transcoding__Enabled=true
+      - MediaOrganizer__Transcoding__Encoder=h264_vaapi
+      - MediaOrganizer__Transcoding__HardwareDevice=/dev/dri/renderD128
+      # Must match the host groups that own /dev/dri (run: ls -ln /dev/dri).
+      - VIDEO_GID=44
+      - RENDER_GID=992
+    # Hands the Intel GPU render node to the container for hardware transcoding.
+    # Remove this when using Encoder=libx264.
+    devices:
+      - /dev/dri:/dev/dri
     restart: unless-stopped
     volumes:
       - /media/bram/Expansion/Videos:/media
@@ -128,6 +140,8 @@ qBittorrent generates a new password on every restart and the integration breaks
 | Method | Path | Description |
 |---|---|---|
 | POST | `/trigger-job` | Trigger organize job immediately (optional `folderPath` body) |
+| POST | `/transcode` | Re-encode media files not yet in the target codec (optional `paths` body) |
+| GET | `/transcode/status` | Report transcoding configuration and hardware availability |
 
 ### Torrents
 
@@ -265,7 +279,8 @@ Responses for the add endpoints:
 4. Build move plan against history DB (idempotent)
 5. Move videos with unique destination handling (`name (1).ext`, etc.)
 6. Move matched subtitle files next to videos
-7. Clean leftover source directories
+7. Optionally re-encode moved files to a hardware-friendly codec (see "Codec transcoding")
+8. Clean leftover source directories
 
 ### Destination rules
 
@@ -287,6 +302,60 @@ Examples:
 - `The.Office.S02E03.Health.Care.mkv` → `The Office/Season 02/The.Office.S02E03.Health.Care.mkv`
 - `[SubsPlease] Jujutsu Kaisen - 56 (1080p) [0F106B43].mkv` → `Jujutsu Kaisen/Season 01/[SubsPlease] Jujutsu Kaisen - 56 (1080p) [0F106B43].mkv`
 
+## Codec transcoding
+
+Older Intel CPUs (5th gen and below) cannot decode HEVC, so Jellyfin has to transcode those files
+on the fly. MediaOrganizer can instead convert them up front to a codec the GPU plays natively
+(H.264), using the GPU for the encode.
+
+Enable it via the Quick start compose above:
+
+- `MediaOrganizer__Transcoding__Enabled=true`
+- `MediaOrganizer__Transcoding__Encoder=h264_vaapi` (Intel/AMD via VA-API), `h264_qsv`
+  (Intel Quick Sync) or `libx264` (CPU only)
+- `MediaOrganizer__Transcoding__HardwareDevice=/dev/dri/renderD128`
+- `VIDEO_GID` / `RENDER_GID` matching the host owners of `/dev/dri`
+- On 5th-gen (Broadwell) and older Intel GPUs, add `LIBVA_DRIVER_NAME=i965` if the default
+  iHD driver cannot encode; newer GPUs can leave it unset
+
+Transcoding runs on demand only — it is **not** part of the organize job. Trigger it with
+`POST /transcode` (or the "Transcode videos" button in the companion app, below the organize
+button). The endpoint scans the media library and converts every file that is not already in
+`Transcoding:TargetCodec`, so re-running it is cheap and idempotent.
+
+To convert a single movie, episode, season or show, pass the file paths explicitly:
+
+```json
+POST /transcode
+{ "paths": ["/media/Show/Season 01/Show S01E01.mkv"] }
+```
+
+The companion app's Library screen has a transcode button next to every show, season, movie and
+episode that sends exactly that item's file(s). Paths outside the configured media folder are
+rejected with `400`. Organize and transcode share a job lock, so starting one while the other is
+running returns `409` instead of running both at once.
+
+The container must see the GPU. The committed compose passes `devices: - /dev/dri:/dev/dri`, and
+`entrypoint.sh` aligns the `video`/`render` groups with `VIDEO_GID`/`RENDER_GID` before dropping
+privileges with gosu. Verify access with:
+
+```bash
+docker compose exec media-organizer vainfo
+curl http://localhost:45263/transcode/status
+```
+
+Files in `Transcoding:OnlyCodecs` (HEVC, MPEG-2, VC-1, AV1, VP9 by default) are converted; files
+already using `Transcoding:TargetCodec` (H.264) are skipped. Leave `OnlyCodecs` empty to convert
+every non-H.264 file. Audio and subtitle streams are copied untouched. The output is written to a
+temporary file and only replaces the original after ffmpeg succeeds, so a failed run never loses a
+file. Hardware decode is not required — frames are decoded on the CPU and uploaded to the GPU for
+encoding, which is exactly what an older Intel iGPU needs. If the hardware encoder fails and
+`AllowSoftwareFallback` is enabled, the file is retried with `libx264`.
+
+> Transcoding is CPU/GPU intensive and rewrites the file. Never run `POST /trigger-job` (with
+> transcoding enabled) or `POST /transcode` while a torrent is still downloading, and make sure
+> there is free space for the temporary copy.
+
 ## Configuration
 
 Settings are under `MediaOrganizer` in `appsettings.json` or environment variables (`__` separator).
@@ -305,6 +374,16 @@ Settings are under `MediaOrganizer` in `appsettings.json` or environment variabl
 | `Qbittorrent:Category` | `null` | Optional category applied to added torrents |
 | `Qbittorrent:Tags` | `null` | Optional comma-separated tags applied to added torrents |
 | `Qbittorrent:RequestTimeoutSeconds` | `60` | Timeout for qBittorrent HTTP calls |
+| `Transcoding:Enabled` | `false` | Master switch for the ffmpeg transcoding step |
+| `Transcoding:Encoder` | `h264_vaapi` | ffmpeg video encoder: `h264_vaapi`, `h264_qsv` or `libx264` |
+| `Transcoding:HardwareDevice` | `/dev/dri/renderD128` | Render node passed to the hardware encoder |
+| `Transcoding:Quality` | `22` | `-global_quality` for hardware encoders, `-crf` for libx264 |
+| `Transcoding:Preset` | `medium` | Encoder preset, used by libx264 only |
+| `Transcoding:OnlyCodecs` | `hevc,h265,mpeg2video,vc1,av1,vp9` | Source codecs that trigger a transcode (empty = any non-target codec) |
+| `Transcoding:TargetCodec` | `h264` | Output codec; used to skip already-compatible files |
+| `Transcoding:KeepOriginal` | `false` | Write a sibling `*.h264` file instead of replacing the original |
+| `Transcoding:AllowSoftwareFallback` | `true` | Retry with libx264 when the hardware encoder fails |
+| `Transcoding:TimeoutSeconds` | `3600` | Max seconds per ffmpeg/ffprobe call |
 
 **Docker-only environment variables** (handled by `entrypoint.sh`, not part of the
 `MediaOrganizer` config section):
@@ -313,6 +392,8 @@ Settings are under `MediaOrganizer` in `appsettings.json` or environment variabl
 |---|---|---|
 | `PUID` | `1000` | User ID the service runs as inside the container |
 | `PGID` | `1000` | Group ID the service runs as inside the container |
+| `VIDEO_GID` | `44` | Host GID owning `/dev/dri/card*`; enables hardware transcoding access |
+| `RENDER_GID` | `992` | Host GID owning `/dev/dri/renderD*`; enables hardware transcoding access |
 
 Set `PUID`/`PGID` to the UID/GID of the host user that owns your media files (run `id` on your
 host). This keeps moved files correctly owned so they are not locked over SMB.
@@ -396,3 +477,6 @@ tools/
 | qBittorrent login fails after a restart | The temporary password changed. Set a permanent one in **Tools → Options → WebUI → Authentication** and update `Qbittorrent__Password` |
 | Downloads land in the wrong place | `Qbittorrent__DownloadFolder` must be a path **qBittorrent** sees, and both services must mount the same host folder at the same container path |
 | An unfinished download disappeared | The organize job ran mid-download; see the warning under "Download folder" |
+| `POST /transcode` returns `503` | `MediaOrganizer__Transcoding__Enabled` is not `true` |
+| Transcoding falls back to libx264 / is slow | Hardware access missing; run `docker compose exec media-organizer vainfo` and check that `devices: /dev/dri` is set and `VIDEO_GID`/`RENDER_GID` match `ls -ln /dev/dri` on the host |
+| `ffprobe`/`ffmpeg` not found | Custom image without the ffmpeg install; run `ffmpeg -version` inside the container |
