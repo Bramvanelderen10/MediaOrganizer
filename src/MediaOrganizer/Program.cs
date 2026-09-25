@@ -51,6 +51,7 @@ builder.Services.AddSingleton<IProcessRunner, PhysicalProcessRunner>();
 builder.Services.AddSingleton<IVideoProbe, FfprobeVideoProbe>();
 builder.Services.AddSingleton<ITranscoder, FfmpegTranscoder>();
 builder.Services.AddSingleton<TranscodeService>();
+builder.Services.AddSingleton<TranscodeJobRunner>();
 
 // Torrents: accepts .torrent uploads and hands them to qBittorrent to download.
 builder.Services.AddHttpClient();

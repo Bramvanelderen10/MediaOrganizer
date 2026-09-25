@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
+import '../jobs/transcode_job_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   final ApiService api;
@@ -147,10 +148,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
     setState(() => _transcodingKeys.add(key));
 
     try {
-      final summary = await widget.api.transcode(paths: paths);
-      if (mounted) {
-        _showTranscodeResult(summary);
-      }
+      await widget.api.startTranscode(paths: paths, label: label);
+      if (!mounted) return;
+
+      _showTranscodeStarted(label);
+
+      // Take the user straight to the job screen so they can watch progress.
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TranscodeJobScreen(api: widget.api),
+        ),
+      );
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -174,22 +182,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  void _showTranscodeResult(Map<String, dynamic> summary) {
-    final transcoded = summary['transcodedFiles'] ?? 0;
-    final skipped = summary['skippedFiles'] ?? 0;
-    final failed = summary['failedFiles'] ?? 0;
-    final hasFailures = failed is int && failed > 0;
-
-    final parts = <String>[
-      'Transcoded $transcoded file(s)',
-      '$skipped already compatible',
-      if (hasFailures) '$failed failed',
-    ];
-
+  void _showTranscodeStarted(String label) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(parts.join(', ')),
-        backgroundColor: hasFailures ? Colors.orange : Colors.green,
+        content: Text('Transcode job started for $label.'),
+        backgroundColor: Colors.green,
       ),
     );
   }

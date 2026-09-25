@@ -60,42 +60,77 @@ public class TranscodeService
     }
 
     /// <summary>
-    /// Handles a transcode request. When <paramref name="paths"/> has entries only those files
-    /// are processed (used by the per-item buttons in the companion app); otherwise the whole
+    /// Runs a short synthetic encode with the configured encoder to prove whether hardware
+    /// encoding actually works. Unlike <see cref="GetStatusAsync"/>, which only checks that the
+    /// encoder is compiled into ffmpeg, this exercises the GPU/driver for real.
+    /// </summary>
+    public async Task<TranscodeSelfTest> RunSelfTestAsync(CancellationToken cancellationToken = default)
+    {
+        var encoderAvailable = await _videoProbe.IsEncoderAvailableAsync(_options.Encoder, cancellationToken);
+        var test = await _transcoder.RunSelfTestAsync(cancellationToken);
+
+        return new TranscodeSelfTest(
+            _options.Enabled,
+            _options.Encoder,
+            _options.HardwareDevice,
+            test.IsHardwareEncoder,
+            encoderAvailable,
+            test.Succeeded,
+            test.IsHardwareEncoder && test.Succeeded,
+            test.Driver,
+            test.Output,
+            test.Hint);
+    }
+
+    /// <summary>
+    /// Handles a transcode request synchronously (callers that want to wait). When
+    /// <paramref name="paths"/> has entries only those files are processed; otherwise the whole
     /// media library is scanned.
     /// </summary>
     public async Task<TranscodeSummary> TranscodeRequestAsync(
         string[]? paths,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<TranscodeProgress>? progress = null)
     {
-        if (!_options.Enabled)
-        {
-            throw new TranscodeNotConfiguredException(
-                "Transcoding is disabled. Set MediaOrganizer:Transcoding:Enabled=true to enable it.");
-        }
-
-        var requestedPaths = paths?.Where(path => !string.IsNullOrWhiteSpace(path)).ToArray() ?? [];
+        EnsureEnabled();
 
         // Organize and transcode touch the same files, so never let them overlap.
         using var jobLock = _jobLock.TryAcquire()
             ?? throw new JobAlreadyRunningException(
                 "Another job (organize or transcode) is already running. Wait for it to finish and try again.");
 
-        if (requestedPaths.Length > 0)
-        {
-            var root = ResolveRootFolder();
-            var files = requestedPaths.Select(path => ResolveWithinRoot(path, root)).ToList();
-            return await TranscodeFilesAsync(files, cancellationToken);
-        }
+        var files = ResolveTargets(paths);
+        return await TranscodeFilesAsync(files, cancellationToken, progress);
+    }
 
-        return await TranscodeLibraryAsync(cancellationToken);
+    /// <summary>Throws when transcoding is disabled in configuration.</summary>
+    public void EnsureEnabled()
+    {
+        if (!_options.Enabled)
+        {
+            throw new TranscodeNotConfiguredException(
+                "Transcoding is disabled. Set MediaOrganizer:Transcoding:Enabled=true to enable it.");
+        }
     }
 
     /// <summary>
-    /// Scans the destination folder (falling back to the source folder) and transcodes every
-    /// video file whose codec is not <c>Transcoding:TargetCodec</c>.
+    /// Resolves the files a request should process: the given paths (validated against the media
+    /// root) or, when none are given, every media file in the library. Does not take the job lock.
     /// </summary>
-    private Task<TranscodeSummary> TranscodeLibraryAsync(CancellationToken cancellationToken)
+    public IReadOnlyList<string> ResolveTargets(string[]? paths)
+    {
+        var requestedPaths = paths?.Where(path => !string.IsNullOrWhiteSpace(path)).ToArray() ?? [];
+        if (requestedPaths.Length == 0)
+        {
+            return ScanLibrary();
+        }
+
+        var root = ResolveRootFolder();
+        return requestedPaths.Select(path => ResolveWithinRoot(path, root)).ToList();
+    }
+
+    /// <summary>Every video file in the destination folder (falling back to the source folder).</summary>
+    private IReadOnlyList<string> ScanLibrary()
     {
         var folder = ResolveRootFolder();
 
@@ -108,13 +143,11 @@ public class TranscodeService
             ? _mediaOptions.VideoExtensions
             : DefaultVideoExtensions;
 
-        var files = _fileSystem
+        return _fileSystem
             .EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .Where(path => extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
             .Where(path => !TranscodeTempFiles.IsTempFile(path))
             .ToList();
-
-        return TranscodeFilesAsync(files, cancellationToken);
     }
 
     /// <summary>Resolves and validates the configured media root folder.</summary>
@@ -158,7 +191,8 @@ public class TranscodeService
     /// </summary>
     public async Task<TranscodeSummary> TranscodeFilesAsync(
         IEnumerable<string> filePaths,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<TranscodeProgress>? progress = null)
     {
         var files = filePaths.ToList();
         if (!_options.Enabled || files.Count == 0)
@@ -182,9 +216,12 @@ public class TranscodeService
             _options.Encoder,
             targetCodec);
 
-        foreach (var filePath in files)
+        for (var index = 0; index < files.Count; index++)
         {
+            var filePath = files[index];
             cancellationToken.ThrowIfCancellationRequested();
+
+            progress?.Report(new TranscodeProgress(files.Count, index, transcoded, skipped, failed, filePath));
 
             // Never treat an in-progress transcode output as a source file.
             if (TranscodeTempFiles.IsTempFile(filePath))
@@ -242,6 +279,8 @@ public class TranscodeService
             }
         }
 
+        progress?.Report(new TranscodeProgress(files.Count, files.Count, transcoded, skipped, failed, null));
+
         _logger.LogInformation(
             "Transcoding finished: {Transcoded} transcoded, {Skipped} skipped, {Failed} failed",
             transcoded,
@@ -254,6 +293,18 @@ public class TranscodeService
     private static string NormalizeCodec(string codec)
         => codec.Trim().TrimStart('.').ToLowerInvariant();
 }
+
+/// <summary>Progress of a running transcode job.</summary>
+public record TranscodeProgress(
+    /// <summary>Total number of files this run will consider.</summary>
+    int TotalFiles,
+    /// <summary>Number of files already finished (the index of the file currently being handled).</summary>
+    int ProcessedFiles,
+    int TranscodedFiles,
+    int SkippedFiles,
+    int FailedFiles,
+    /// <summary>File currently being probed/encoded, or null when the run has finished.</summary>
+    string? CurrentFile);
 
 /// <summary>Outcome of a transcode run.</summary>
 public record TranscodeSummary(int TotalFiles, int TranscodedFiles, int SkippedFiles, int FailedFiles);

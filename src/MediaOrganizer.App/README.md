@@ -7,6 +7,7 @@ It lets you:
 - Check API health continuously
 - Trigger an organize run
 - Transcode individual shows, seasons, movies or episodes from the Library screen
+- Watch transcode progress on the Transcode job screen, with a hardware self-test
 - Open or share a `.torrent` file or magnet link with the app and confirm it before downloading
 - View all torrents with live download progress
 - Browse, rename, move, and delete files in the source folder
@@ -66,9 +67,20 @@ play it) and sends that item's file paths (`{"paths": [...]}`), so you can conve
 without scanning the whole library. Because files already in the target codec are skipped, it is
 safe to run repeatedly.
 
-A confirmation dialog warns that the original files are replaced (unless the server is
-configured to keep originals), and a spinner replaces the button while that item is transcoding.
-Transcoding is not exposed on the home screen — the Library buttons are the only entry point.
+A confirmation dialog warns that the original files are replaced (unless the server is configured
+to keep originals). The server then runs the work **in the background**, so the app opens the
+**Transcode job** screen straight away, where you can watch progress.
+
+## Transcode job screen
+
+Open it from the top-right menu on the home screen. It polls `GET /transcode/job` every two
+seconds and shows the job state (`idle`, `running`, `completed`, `failed`), a progress bar, the
+counters and the file currently being encoded, plus any error.
+
+It also has a **Run self-test** button (calls `GET /transcode/selftest`) that performs a 2 second
+encode to prove hardware acceleration is really working, reporting the encoder, the VA-API driver
+(e.g. `iHD` / `i965`) and the ffmpeg output. This is the reliable way to check — the status
+endpoint only reports whether the encoder is compiled into ffmpeg.
 
 The server must have transcoding enabled (`MediaOrganizer:Transcoding:Enabled=true`); if it is
 not, the app shows the server's message.
@@ -98,7 +110,9 @@ The app stores this value in local preferences. You can clear it via **Reset API
 | GET | `/library` | Organized media library structure |
 | GET | `/browse` | Source folder directory listing |
 | POST | `/trigger-job` | Trigger organize job |
-| POST | `/transcode` | Transcode files not yet in the target codec (optional `paths` body for single items) |
+| POST | `/transcode` | Start a background transcode job (optional `paths` + `label` body) |
+| GET | `/transcode/job` | Transcode job state, progress and current file |
+| GET | `/transcode/selftest` | Run a real encode to verify hardware acceleration |
 | GET | `/transcode/status` | Transcoding config + hardware availability |
 | GET | `/torrents` | List torrents with progress |
 | POST | `/torrents/add` | Upload a `.torrent` file and start the download |

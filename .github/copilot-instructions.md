@@ -63,7 +63,9 @@
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/trigger-job` | Trigger organize pipeline immediately (optional `folderPath` body) |
-| `POST` | `/transcode` | Re-encode media files whose codec is not the configured target codec. Omit the body to scan the library, or pass `{ "paths": ["..."] }` to transcode specific files |
+| `POST` | `/transcode` | Starts a background transcode job and returns `202` immediately. Omit the body to scan the library, or pass `{ "paths": ["..."], "label": "..." }` to transcode specific files |
+| `GET` | `/transcode/job` | Current/last transcode job: state, progress counters, current file (poll this) |
+| `GET` | `/transcode/selftest` | Runs a 2 second real encode to verify hardware acceleration and report the VA-API driver |
 | `GET` | `/transcode/status` | Report transcoding configuration and hardware availability |
 
 ### Torrents
@@ -117,6 +119,7 @@ All services are registered as **singletons** via DI. Key components:
 | Torrents | `TorrentService` | Validates uploaded `.torrent` files and magnet links, resolves the download folder |
 | Torrents | `QbittorrentClient` | qBittorrent WebUI API v2 client (login, `torrents/add`, `torrents/info`) |
 | Transcoding | `TranscodeService` | Scans media files, probes codec, delegates to `ITranscoder` |
+| Transcoding | `TranscodeJobRunner` | Runs transcodes in the background and keeps the polled job status |
 | Transcoding | `FfmpegTranscoder` | Builds/runs the ffmpeg command (VA-API/QSV/libx264), safe temp-file replace |
 | Transcoding | `FfprobeVideoProbe` | Reads video codec via `ffprobe`, checks encoder availability |
 | Transcoding | `IProcessRunner` / `PhysicalProcessRunner` | External process abstraction for ffmpeg/ffprobe |

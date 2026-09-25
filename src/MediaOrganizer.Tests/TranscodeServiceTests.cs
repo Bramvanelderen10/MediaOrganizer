@@ -218,6 +218,42 @@ public class TranscodeServiceTests
         _probeMock.Verify(p => p.IsEncoderAvailableAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
+    [Fact]
+    public async Task RunSelfTestAsync_CombinesEncoderAvailabilityAndEncodeResult()
+    {
+        var sut = CreateSut();
+        _probeMock
+            .Setup(p => p.IsEncoderAvailableAsync("h264_vaapi", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _transcoderMock
+            .Setup(t => t.RunSelfTestAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TranscodeEncodeTest(true, true, "iHD", "ok", null));
+
+        var result = await sut.RunSelfTestAsync(Ct);
+
+        Assert.True(result.EncoderAvailable);
+        Assert.True(result.EncodeSucceeded);
+        Assert.True(result.HardwareEncode);
+        Assert.Equal("iHD", result.Driver);
+    }
+
+    [Fact]
+    public async Task RunSelfTestAsync_DoesNotClaimHardwareEncodeForSoftwareEncoder()
+    {
+        var sut = CreateSut();
+        _probeMock
+            .Setup(p => p.IsEncoderAvailableAsync("h264_vaapi", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _transcoderMock
+            .Setup(t => t.RunSelfTestAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TranscodeEncodeTest(true, IsHardwareEncoder: false, null, "ok", null));
+
+        var result = await sut.RunSelfTestAsync(Ct);
+
+        Assert.True(result.EncodeSucceeded);
+        Assert.False(result.HardwareEncode);
+    }
+
     // ────────────── Helpers ──────────────
 
     private void SetupExistingFile(string path)

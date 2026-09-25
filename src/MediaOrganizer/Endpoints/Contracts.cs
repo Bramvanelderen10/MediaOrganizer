@@ -1,7 +1,7 @@
 namespace MediaOrganizer.Endpoints;
 
 public record TriggerJobRequest(string? FolderPath);
-public record TranscodeRequest(string[]? Paths);
+public record TranscodeRequest(string[]? Paths, string? Label);
 public record AddMagnetRequest(string? MagnetLink, string? FolderPath);
 public record ForgetShowSeasonRequest(string ShowName, int SeasonNumber);
 public record ForgetMovieRequest(string MovieName);
