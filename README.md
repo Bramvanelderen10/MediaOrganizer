@@ -283,9 +283,9 @@ Show:
 
 Examples:
 
-- `Interstellar.2014.mp4` → `Interstellar 2014/Interstellar 2014.mp4`
-- `The.Office.S02E03.Health.Care.mkv` → `The Office/Season 02/The.Office.S02E03.Health.Care.mkv`
-- `[SubsPlease] Jujutsu Kaisen - 56 (1080p) [0F106B43].mkv` → `Jujutsu Kaisen/Season 01/[SubsPlease] Jujutsu Kaisen - 56 (1080p) [0F106B43].mkv`
+- `example.2014.mp4` → `Example 2014/Example 2014.mp4`
+- `The.Show.S02E03.Care.mkv` → `The Show/Season 02/The.Show.S02E03..Care.mkv`
+- `[SubsPlease] Kisen - 56 (1080p) [0F106B43].mkv` → `Kisen/Season 01/[SubsPlease] Kisen - 56 (1080p) [0F106B43].mkv`
 
 ## Configuration
 
