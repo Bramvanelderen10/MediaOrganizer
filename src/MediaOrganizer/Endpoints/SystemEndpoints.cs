@@ -14,7 +14,9 @@ public static class SystemEndpoints
             {
                 triggerJob = "POST /trigger-job",
                 transcode = "POST /transcode",
+                transcodeJob = "GET /transcode/job",
                 transcodeStatus = "GET /transcode/status",
+                transcodeSelfTest = "GET /transcode/selftest",
                 forgetMovie = "POST /forget-movie",
                 forgetShow = "POST /forget-show",
                 forgetShowSeason = "POST /forget-show-season",

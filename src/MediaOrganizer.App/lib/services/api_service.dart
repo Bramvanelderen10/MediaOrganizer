@@ -25,29 +25,55 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
-  /// Re-encodes media files that are not yet in the configured target codec via
-  /// POST /transcode.
+  /// Starts a background transcode job via POST /transcode and returns immediately (202).
   ///
-  /// When [paths] is provided only those files are transcoded (used by the per-item
-  /// buttons on the library screen); otherwise the whole media library is scanned.
-  /// Returns the parsed summary on success, throws on failure.
+  /// When [paths] is provided only those files are transcoded; otherwise the whole media
+  /// library is scanned. [label] is a friendly name shown on the job screen.
   ///
   /// Throws [ApiException] with [ApiException.isNotFound] on older backends, with
-  /// [ApiException.isNotConfigured] when transcoding is disabled on the server, and with
-  /// a 409 status when another job is already running.
-  Future<Map<String, dynamic>> transcode({List<String>? paths}) async {
+  /// [ApiException.isNotConfigured] when transcoding is disabled on the server, and with a
+  /// 409 status when another job is already running.
+  Future<Map<String, dynamic>> startTranscode({
+    List<String>? paths,
+    String? label,
+  }) async {
     final response = await http.post(
       _uri('/transcode'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
         if (paths != null && paths.isNotEmpty) 'paths': paths,
+        if (label != null && label.isNotEmpty) 'label': label,
       }),
     );
     if (response.statusCode >= 200 && response.statusCode < 300) {
-      final decoded = jsonDecode(response.body);
-      return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+      return _decodeMap(response.body);
     }
     throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Current or most recent transcode job via GET /transcode/job.
+  ///
+  /// Throws [ApiException] with [ApiException.isNotFound] on older backends.
+  Future<Map<String, dynamic>> getTranscodeJob() async {
+    final response = await http.get(_uri('/transcode/job'));
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return _decodeMap(response.body);
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  /// Runs a short real encode to verify hardware acceleration via GET /transcode/selftest.
+  Future<Map<String, dynamic>> runTranscodeSelfTest() async {
+    final response = await http.get(_uri('/transcode/selftest'));
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return _decodeMap(response.body);
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
+
+  Map<String, dynamic> _decodeMap(String body) {
+    final decoded = jsonDecode(body);
+    return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
   }
 
   /// Forgets move history for a specific show season via POST /forget-show-season.

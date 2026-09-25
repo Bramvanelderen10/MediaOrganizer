@@ -6,6 +6,7 @@ import '../../services/storage_service.dart';
 import '../../services/torrent_intent_service.dart';
 import '../setup/setup_screen.dart';
 import '../file_browser/file_browser_screen.dart';
+import '../jobs/transcode_job_screen.dart';
 import '../library/library_screen.dart';
 import '../storage/storage_screen.dart';
 import '../torrent/torrent_confirm_dialog.dart';
@@ -20,6 +21,7 @@ enum _AppMenuAction {
   fileBrowser,
   storage,
   torrents,
+  transcodeJob,
   forgetShowSeason,
   resetApiUrl,
 }
@@ -347,6 +349,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     MaterialPageRoute(builder: (_) => TorrentsScreen(api: _api)),
                   );
                   break;
+                case _AppMenuAction.transcodeJob:
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => TranscodeJobScreen(api: _api),
+                    ),
+                  );
+                  break;
                 case _AppMenuAction.forgetShowSeason:
                   unawaited(ForgetSeasonDialog.show(context, _api));
                   break;
@@ -372,6 +381,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   PopupMenuItem<_AppMenuAction>(
                     value: _AppMenuAction.torrents,
                     child: Text('Torrents'),
+                  ),
+                  PopupMenuItem<_AppMenuAction>(
+                    value: _AppMenuAction.transcodeJob,
+                    child: Text('Transcode job'),
                   ),
                   PopupMenuItem<_AppMenuAction>(
                     value: _AppMenuAction.forgetShowSeason,

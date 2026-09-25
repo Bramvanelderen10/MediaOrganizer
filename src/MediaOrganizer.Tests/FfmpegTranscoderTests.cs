@@ -103,6 +103,68 @@ public class FfmpegTranscoderTests
         _fsMock.Verify(f => f.DeleteFile(SourcePath), Times.Never);
     }
 
+    [Fact]
+    public async Task RunSelfTestAsync_ReportsDriverOnSuccess()
+    {
+        var sut = CreateSut();
+        SetupProcess(new ProcessResult(
+            0,
+            string.Empty,
+            "libva info: Trying to open /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so\nlibva info: va_openDriver() returns 0"));
+
+        var result = await sut.RunSelfTestAsync(Ct);
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.IsHardwareEncoder);
+        Assert.Equal("iHD", result.Driver);
+        Assert.Contains("h264_vaapi", CaptureArguments());
+        Assert.Contains("/dev/dri/renderD128", CaptureArguments());
+    }
+
+    [Fact]
+    public async Task RunSelfTestAsync_ReportsFailureAndOutput()
+    {
+        var sut = CreateSut();
+        SetupProcess(new ProcessResult(1, string.Empty, "Failed to initialise VAAPI connection: -1"));
+
+        var result = await sut.RunSelfTestAsync(Ct);
+
+        Assert.False(result.Succeeded);
+        Assert.True(result.IsHardwareEncoder);
+        Assert.Null(result.Driver);
+        Assert.Contains("VAAPI", result.Output);
+    }
+
+    [Fact]
+    public async Task RunSelfTestAsync_SuggestsI965DriverForVaDisplayFailure()
+    {
+        var sut = CreateSut();
+        SetupProcess(new ProcessResult(
+            1,
+            string.Empty,
+            "[AVHWDeviceContext @ 0x1] No VA display found for device /dev/dri/renderD128.\n"
+            + "Device creation failed: -22.\n"
+            + "Failed to set value '/dev/dri/renderD128' for option 'vaapi_device': Invalid argument"));
+
+        var result = await sut.RunSelfTestAsync(Ct);
+
+        Assert.False(result.Succeeded);
+        Assert.NotNull(result.Hint);
+        Assert.Contains("LIBVA_DRIVER_NAME=i965", result.Hint!);
+    }
+
+    [Fact]
+    public async Task RunSelfTestAsync_NoHintWhenSuccessful()
+    {
+        var sut = CreateSut();
+        SetupProcess(new ProcessResult(0, string.Empty, string.Empty));
+
+        var result = await sut.RunSelfTestAsync(Ct);
+
+        Assert.True(result.Succeeded);
+        Assert.Null(result.Hint);
+    }
+
     // ────────────── Helpers ──────────────
 
     private List<string>? _capturedArguments;
@@ -110,7 +172,7 @@ public class FfmpegTranscoderTests
     private void SetupProcess(ProcessResult result, List<string>? encoders = null)
     {
         _processRunnerMock
-            .Setup(p => p.RunAsync("ffmpeg", It.IsAny<IReadOnlyList<string>>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
+            .Setup(p => p.RunAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .Callback<string, IReadOnlyList<string>, TimeSpan, CancellationToken>((_, args, _, _) =>
             {
                 _capturedArguments = args.ToList();

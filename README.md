@@ -140,7 +140,9 @@ qBittorrent generates a new password on every restart and the integration breaks
 | Method | Path | Description |
 |---|---|---|
 | POST | `/trigger-job` | Trigger organize job immediately (optional `folderPath` body) |
-| POST | `/transcode` | Re-encode media files not yet in the target codec (optional `paths` body) |
+| POST | `/transcode` | Starts a background transcode job and returns `202` immediately (optional `paths` + `label` body) |
+| GET | `/transcode/job` | Current or most recent transcode job: state, progress counters, current file |
+| GET | `/transcode/selftest` | Runs a short real encode to verify hardware acceleration and report the driver |
 | GET | `/transcode/status` | Report transcoding configuration and hardware availability |
 
 ### Torrents
@@ -336,6 +338,36 @@ episode that sends exactly that item's file(s). Paths outside the configured med
 rejected with `400`. Organize and transcode share a job lock, so starting one while the other is
 running returns `409` instead of running both at once.
 
+### Background jobs and progress
+
+`POST /transcode` returns **`202 Accepted`** immediately with a job label and file count; the work
+runs in the background. Poll `GET /transcode/job` to follow it:
+
+```json
+{ "state": "running", "isRunning": true, "label": "Inception 2010",
+  "totalFiles": 2, "processedFiles": 1, "transcodedFiles": 1,
+  "skippedFiles": 0, "failedFiles": 0,
+  "currentFile": "/media/Movies/Ready 2021/Ready 2021.mp4" }
+```
+
+`state` is `idle`, `running`, `completed` or `failed`. The companion app's **Transcode job**
+screen (top-right menu) polls this endpoint and shows a progress bar, counters and the current
+file.
+
+### Verifying hardware acceleration
+
+`GET /transcode/status` only checks that the encoder is compiled into ffmpeg, so it is **not**
+proof that the GPU works. Run a real test instead:
+
+```bash
+curl http://<server>:45263/transcode/selftest
+```
+
+It performs a 2 second synthetic encode with the configured encoder and reports `hardwareEncode`
+(true only when a hardware encoder was used and the encode succeeded), the VA-API `driver`
+(`iHD` or `i965`), and the ffmpeg output for diagnosis. The same test is available as
+**Run self-test** on the app's Transcode job screen.
+
 The container must see the GPU. The committed compose passes `devices: - /dev/dri:/dev/dri`, and
 `entrypoint.sh` aligns the `video`/`render` groups with `VIDEO_GID`/`RENDER_GID` before dropping
 privileges with gosu. Verify access with:
@@ -480,4 +512,5 @@ tools/
 | An unfinished download disappeared | The organize job ran mid-download; see the warning under "Download folder" |
 | `POST /transcode` returns `503` | `MediaOrganizer__Transcoding__Enabled` is not `true` |
 | Transcoding falls back to libx264 / is slow | Hardware access missing; run `docker compose exec media-organizer vainfo` and check that `devices: /dev/dri` is set and `VIDEO_GID`/`RENDER_GID` match `ls -ln /dev/dri` on the host |
+| Logs show `No VA display found for device /dev/dri/renderD128` / `Device creation failed: -22` | ffmpeg could not open the GPU with the loaded driver. On 5th gen (Broadwell) and older Intel GPUs add `LIBVA_DRIVER_NAME=i965` to the container environment (the default iHD driver does not support them). Confirm with `GET /transcode/selftest` or `vainfo --display drm --device /dev/dri/renderD128` |
 | `ffprobe`/`ffmpeg` not found | Custom image without the ffmpeg install; run `ffmpeg -version` inside the container |

@@ -11,4 +11,10 @@ public interface ITranscoder
     /// Returns true when a transcoded output file was produced.
     /// </summary>
     Task<bool> TranscodeAsync(string filePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs a short synthetic encode with the configured encoder (no media file is touched) to
+    /// verify that the driver/GPU actually works.
+    /// </summary>
+    Task<TranscodeEncodeTest> RunSelfTestAsync(CancellationToken cancellationToken = default);
 }
