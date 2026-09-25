@@ -32,6 +32,13 @@ public class VideoFileFinder
                 continue;
             }
 
+            // In-progress transcode outputs (e.g. Movie.transcode.mkv) are partial files and
+            // must never be organized as if they were real media.
+            if (TranscodeTempFiles.IsTempFile(path))
+            {
+                continue;
+            }
+
             videoFilePaths.Add(path);
         }
 

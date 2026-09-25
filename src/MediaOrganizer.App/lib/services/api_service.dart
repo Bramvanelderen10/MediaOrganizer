@@ -25,6 +25,31 @@ class ApiService {
     throw ApiException(response.statusCode, response.body);
   }
 
+  /// Re-encodes media files that are not yet in the configured target codec via
+  /// POST /transcode.
+  ///
+  /// When [paths] is provided only those files are transcoded (used by the per-item
+  /// buttons on the library screen); otherwise the whole media library is scanned.
+  /// Returns the parsed summary on success, throws on failure.
+  ///
+  /// Throws [ApiException] with [ApiException.isNotFound] on older backends, with
+  /// [ApiException.isNotConfigured] when transcoding is disabled on the server, and with
+  /// a 409 status when another job is already running.
+  Future<Map<String, dynamic>> transcode({List<String>? paths}) async {
+    final response = await http.post(
+      _uri('/transcode'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        if (paths != null && paths.isNotEmpty) 'paths': paths,
+      }),
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final decoded = jsonDecode(response.body);
+      return decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+    }
+    throw ApiException(response.statusCode, response.body);
+  }
+
   /// Forgets move history for a specific show season via POST /forget-show-season.
   Future<String> forgetShowSeason({
     required String showName,

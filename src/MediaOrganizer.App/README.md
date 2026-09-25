@@ -6,6 +6,7 @@ It lets you:
 - Configure and persist the API URL
 - Check API health continuously
 - Trigger an organize run
+- Transcode individual shows, seasons, movies or episodes from the Library screen
 - Open or share a `.torrent` file or magnet link with the app and confirm it before downloading
 - View all torrents with live download progress
 - Browse, rename, move, and delete files in the source folder
@@ -57,6 +58,21 @@ acts on `.torrent` files and `magnet:` links.
 status, transferred size, speed and ETA. The list refreshes every few seconds while the
 screen is open; pull down or tap the refresh icon to refresh manually.
 
+## Codec transcoding
+
+Open the **Library** screen and use the transcode button next to any show, season, movie or
+episode. It asks the server to re-encode just that item (e.g. HEVC to H.264 so an older GPU can
+play it) and sends that item's file paths (`{"paths": [...]}`), so you can convert one title
+without scanning the whole library. Because files already in the target codec are skipped, it is
+safe to run repeatedly.
+
+A confirmation dialog warns that the original files are replaced (unless the server is
+configured to keep originals), and a spinner replaces the button while that item is transcoding.
+Transcoding is not exposed on the home screen — the Library buttons are the only entry point.
+
+The server must have transcoding enabled (`MediaOrganizer:Transcoding:Enabled=true`); if it is
+not, the app shows the server's message.
+
 ## Older servers
 
 If the server runs an older MediaOrganizer build that predates these features, the app
@@ -82,6 +98,8 @@ The app stores this value in local preferences. You can clear it via **Reset API
 | GET | `/library` | Organized media library structure |
 | GET | `/browse` | Source folder directory listing |
 | POST | `/trigger-job` | Trigger organize job |
+| POST | `/transcode` | Transcode files not yet in the target codec (optional `paths` body for single items) |
+| GET | `/transcode/status` | Transcoding config + hardware availability |
 | GET | `/torrents` | List torrents with progress |
 | POST | `/torrents/add` | Upload a `.torrent` file and start the download |
 | POST | `/torrents/add-magnet` | Add a magnet link and start the download |

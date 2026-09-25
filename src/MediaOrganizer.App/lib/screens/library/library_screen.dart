@@ -13,6 +13,7 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen> {
   late Future<Map<String, dynamic>> _libraryFuture;
   final Map<String, Map<String, dynamic>> _selectedItems = {};
+  final Set<String> _transcodingKeys = {};
 
   bool get _isSelectionMode => _selectedItems.isNotEmpty;
 
@@ -98,6 +99,101 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  /// Asks the server to transcode exactly the files behind one library item.
+  ///
+  /// Shows a confirmation first, because with the default server settings the original files
+  /// are replaced by the transcoded output.
+  Future<void> _transcodeItem(
+    String key,
+    String label,
+    List<String> paths,
+  ) async {
+    if (_transcodingKeys.contains(key)) return;
+
+    if (paths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No files to transcode for this item.')),
+      );
+      return;
+    }
+
+    final plural = paths.length != 1;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (ctx) => AlertDialog(
+            title: Text('Transcode $label?'),
+            content: Text(
+              'Re-encode ${paths.length} file${plural ? 's' : ''} that '
+              '${plural ? 'are' : 'is'} not already in the target codec.\n\n'
+              'The original file${plural ? 's' : ''} will be replaced, '
+              'unless the server is configured to keep originals.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Transcode'),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _transcodingKeys.add(key));
+
+    try {
+      final summary = await widget.api.transcode(paths: paths);
+      if (mounted) {
+        _showTranscodeResult(summary);
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_transcodeErrorMessage(e)),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to transcode: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _transcodingKeys.remove(key));
+    }
+  }
+
+  void _showTranscodeResult(Map<String, dynamic> summary) {
+    final transcoded = summary['transcodedFiles'] ?? 0;
+    final skipped = summary['skippedFiles'] ?? 0;
+    final failed = summary['failedFiles'] ?? 0;
+    final hasFailures = failed is int && failed > 0;
+
+    final parts = <String>[
+      'Transcoded $transcoded file(s)',
+      '$skipped already compatible',
+      if (hasFailures) '$failed failed',
+    ];
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(parts.join(', ')),
+        backgroundColor: hasFailures ? Colors.orange : Colors.green,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -180,6 +276,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
             selectedKeys: _selectedItems.keys.toSet(),
             onToggleSelection: _toggleSelection,
             onStartSelection: _startSelection,
+            transcodingKeys: _transcodingKeys,
+            onTranscode: _transcodeItem,
           );
         },
       ),
@@ -196,6 +294,8 @@ class _LibraryList extends StatelessWidget {
   final Set<String> selectedKeys;
   final void Function(String key, Map<String, dynamic> item) onToggleSelection;
   final void Function(String key, Map<String, dynamic> item) onStartSelection;
+  final Set<String> transcodingKeys;
+  final void Function(String key, String label, List<String> paths) onTranscode;
 
   const _LibraryList({
     required this.movies,
@@ -206,6 +306,8 @@ class _LibraryList extends StatelessWidget {
     required this.selectedKeys,
     required this.onToggleSelection,
     required this.onStartSelection,
+    required this.transcodingKeys,
+    required this.onTranscode,
   });
 
   @override
@@ -232,6 +334,8 @@ class _LibraryList extends StatelessWidget {
               selectedKeys: selectedKeys,
               onToggleSelection: onToggleSelection,
               onStartSelection: onStartSelection,
+              transcodingKeys: transcodingKeys,
+              onTranscode: onTranscode,
             ),
           ),
         ],
@@ -252,6 +356,8 @@ class _LibraryList extends StatelessWidget {
               isSelected: selectedKeys.contains('movie:${movie['name']}'),
               onToggleSelection: onToggleSelection,
               onStartSelection: onStartSelection,
+              isTranscoding: transcodingKeys.contains('movie:${movie['name']}'),
+              onTranscode: onTranscode,
             ),
           ),
         ],
@@ -268,6 +374,8 @@ class _MovieTile extends StatelessWidget {
   final bool isSelected;
   final void Function(String key, Map<String, dynamic> item) onToggleSelection;
   final void Function(String key, Map<String, dynamic> item) onStartSelection;
+  final bool isTranscoding;
+  final void Function(String key, String label, List<String> paths) onTranscode;
 
   const _MovieTile({
     required this.movie,
@@ -277,6 +385,8 @@ class _MovieTile extends StatelessWidget {
     required this.isSelected,
     required this.onToggleSelection,
     required this.onStartSelection,
+    required this.isTranscoding,
+    required this.onTranscode,
   });
 
   @override
@@ -300,14 +410,41 @@ class _MovieTile extends StatelessWidget {
       onTap: isSelectionMode ? () => onToggleSelection(key, forgetItem) : null,
       onLongPress:
           isSelectionMode ? null : () => onStartSelection(key, forgetItem),
-      trailing:
-          isSelectionMode
-              ? null
-              : IconButton(
-                icon: const Icon(Icons.delete_outline),
-                tooltip: 'Forget movie',
-                onPressed: () => _confirmForget(context, name),
-              ),
+      trailing: isSelectionMode ? null : _buildActions(context, name, targetPath),
+    );
+  }
+
+  Widget _buildActions(BuildContext context, String name, String targetPath) {
+    if (isTranscoding) {
+      return const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.transform_rounded),
+          tooltip: 'Transcode movie',
+          onPressed: () => _transcode(name, targetPath),
+        ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline),
+          tooltip: 'Forget movie',
+          onPressed: () => _confirmForget(context, name),
+        ),
+      ],
+    );
+  }
+
+  void _transcode(String name, String targetPath) {
+    onTranscode(
+      'movie:$name',
+      '"$name"',
+      targetPath.isEmpty ? const [] : [targetPath],
     );
   }
 
@@ -330,6 +467,8 @@ class _ShowTile extends StatefulWidget {
   final Set<String> selectedKeys;
   final void Function(String key, Map<String, dynamic> item) onToggleSelection;
   final void Function(String key, Map<String, dynamic> item) onStartSelection;
+  final Set<String> transcodingKeys;
+  final void Function(String key, String label, List<String> paths) onTranscode;
 
   const _ShowTile({
     required this.show,
@@ -339,6 +478,8 @@ class _ShowTile extends StatefulWidget {
     required this.selectedKeys,
     required this.onToggleSelection,
     required this.onStartSelection,
+    required this.transcodingKeys,
+    required this.onTranscode,
   });
 
   @override
@@ -384,6 +525,21 @@ class _ShowTileState extends State<_ShowTile> {
                 : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (widget.transcodingKeys.contains(key))
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    else
+                      IconButton(
+                        icon: const Icon(Icons.transform_rounded),
+                        tooltip: 'Transcode show',
+                        onPressed: () => _transcode(name),
+                      ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline),
                       tooltip: 'Forget show',
@@ -406,11 +562,35 @@ class _ShowTileState extends State<_ShowTile> {
                     selectedKeys: widget.selectedKeys,
                     onToggleSelection: widget.onToggleSelection,
                     onStartSelection: widget.onStartSelection,
+                    transcodingKeys: widget.transcodingKeys,
+                    onTranscode: widget.onTranscode,
                   ),
                 )
                 .toList(),
       ),
     );
+  }
+
+  void _transcode(String name) {
+    widget.onTranscode('show:$name', '"$name"', _episodePaths());
+  }
+
+  /// Collects every episode file path of this show across all seasons.
+  List<String> _episodePaths() {
+    final seasons = widget.show['seasons'] as List<dynamic>? ?? [];
+    final paths = <String>[];
+
+    for (final season in seasons) {
+      final episodes = season['episodes'] as List<dynamic>? ?? [];
+      for (final episode in episodes) {
+        final path = episode['targetPath'] as String?;
+        if (path != null && path.isNotEmpty) {
+          paths.add(path);
+        }
+      }
+    }
+
+    return paths;
   }
 
   void _confirmForget(BuildContext context, String name) {
@@ -434,6 +614,8 @@ class _SeasonTile extends StatelessWidget {
   final Set<String> selectedKeys;
   final void Function(String key, Map<String, dynamic> item) onToggleSelection;
   final void Function(String key, Map<String, dynamic> item) onStartSelection;
+  final Set<String> transcodingKeys;
+  final void Function(String key, String label, List<String> paths) onTranscode;
 
   const _SeasonTile({
     required this.season,
@@ -444,6 +626,8 @@ class _SeasonTile extends StatelessWidget {
     required this.selectedKeys,
     required this.onToggleSelection,
     required this.onStartSelection,
+    required this.transcodingKeys,
+    required this.onTranscode,
   });
 
   @override
@@ -477,6 +661,22 @@ class _SeasonTile extends StatelessWidget {
               : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  if (transcodingKeys.contains(key))
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      icon: const Icon(Icons.transform_rounded, size: 20),
+                      tooltip: 'Transcode season',
+                      onPressed:
+                          () => _transcodeSeason(seasonNumber, episodes),
+                    ),
                   IconButton(
                     icon: const Icon(Icons.delete_outline, size: 20),
                     tooltip: 'Forget season',
@@ -525,18 +725,73 @@ class _SeasonTile extends StatelessWidget {
               trailing:
                   isSelectionMode
                       ? null
-                      : IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 20),
-                        tooltip: 'Forget episode',
-                        onPressed:
-                            () => _confirmForgetEpisode(
-                              context,
-                              seasonNumber,
-                              epNum,
+                      : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (transcodingKeys.contains(epKey))
+                            const Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            )
+                          else
+                            IconButton(
+                              icon: const Icon(
+                                Icons.transform_rounded,
+                                size: 20,
+                              ),
+                              tooltip: 'Transcode episode',
+                              onPressed:
+                                  () => _transcodeEpisode(
+                                    seasonNumber,
+                                    epNum,
+                                    targetPath,
+                                  ),
                             ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline, size: 20),
+                            tooltip: 'Forget episode',
+                            onPressed:
+                                () => _confirmForgetEpisode(
+                                  context,
+                                  seasonNumber,
+                                  epNum,
+                                ),
+                          ),
+                        ],
                       ),
             );
           }).toList(),
+    );
+  }
+
+  void _transcodeSeason(int seasonNumber, List<dynamic> episodes) {
+    final paths =
+        episodes
+            .map((ep) => ep['targetPath'] as String?)
+            .whereType<String>()
+            .where((path) => path.isNotEmpty)
+            .toList();
+
+    onTranscode('season:$showName:$seasonNumber', 'Season $seasonNumber', paths);
+  }
+
+  void _transcodeEpisode(
+    int seasonNumber,
+    int episodeNumber,
+    String targetPath,
+  ) {
+    final label =
+        'S${seasonNumber.toString().padLeft(2, '0')}'
+        'E${episodeNumber.toString().padLeft(2, '0')}';
+
+    onTranscode(
+      'episode:$showName:$seasonNumber:$episodeNumber',
+      label,
+      targetPath.isEmpty ? const [] : [targetPath],
     );
   }
 
@@ -574,6 +829,24 @@ class _SeasonTile extends StatelessWidget {
       onChanged: onChanged,
     );
   }
+}
+
+/// Turns an [ApiException] from POST /transcode into a user-facing message.
+String _transcodeErrorMessage(ApiException e) {
+  if (e.isNotFound) {
+    return 'This server does not support transcoding yet. '
+        'Update MediaOrganizer on the server.';
+  }
+  if (e.isNotConfigured) {
+    return e.serverMessage ??
+        'Transcoding is disabled on the server. '
+            'Set MediaOrganizer:Transcoding:Enabled=true.';
+  }
+  if (e.statusCode == 409) {
+    return e.serverMessage ??
+        'Another job is already running. Wait for it to finish.';
+  }
+  return e.serverMessage ?? 'Transcoding failed (${e.statusCode}).';
 }
 
 void _showForgetDialog(

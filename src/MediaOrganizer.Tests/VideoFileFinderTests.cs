@@ -88,6 +88,23 @@ public class VideoFileFinderTests
     }
 
     [Fact]
+    public void GetVideoFiles_IgnoresInProgressTranscodeFiles()
+    {
+        _fsMock.Setup(f => f.EnumerateFiles("/source", "*", SearchOption.AllDirectories))
+            .Returns(new[]
+            {
+                "/source/Movie.transcode.mkv",
+                "/source/Movie.mkv",
+            });
+
+        var sut = new VideoFileFinder(_fsMock.Object);
+        var result = sut.GetVideoFiles("/source", new[] { ".mkv" });
+
+        Assert.Single(result);
+        Assert.Equal("/source/Movie.mkv", result[0]);
+    }
+
+    [Fact]
     public void GetVideoFiles_ReturnsEmpty_WhenNoMatchingFiles()
     {
         _fsMock.Setup(f => f.EnumerateFiles("/source", "*", SearchOption.AllDirectories))
